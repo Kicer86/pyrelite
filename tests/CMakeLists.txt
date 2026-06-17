@@ -14,3 +14,7 @@ gtest_discover_tests(rng_test)
 add_executable(arena_test arena_test.cpp)
 target_link_libraries(arena_test PRIVATE core GTest::gmock_main)
 gtest_discover_tests(arena_test)
+
+add_executable(game_test game_test.cpp)
+target_link_libraries(game_test PRIVATE core GTest::gmock_main)
+gtest_discover_tests(game_test)
