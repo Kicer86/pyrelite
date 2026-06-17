@@ -41,6 +41,11 @@ int BoardModel::bombCount() const
     return static_cast<int>(m_game.bombs().size());
 }
 
+int BoardModel::explosionCount() const
+{
+    return static_cast<int>(m_game.explosions().size());
+}
+
 int BoardModel::tileAt(int x, int y) const
 {
     switch (m_game.grid().at(x, y))
@@ -65,10 +70,26 @@ int BoardModel::bombY(int index) const
     return m_game.bombs().at(index).y;
 }
 
+int BoardModel::explosionX(int index) const
+{
+    return m_game.explosions().at(index).x;
+}
+
+int BoardModel::explosionY(int index) const
+{
+    return m_game.explosions().at(index).y;
+}
+
+void BoardModel::emitChanged()
+{
+    ++m_revision;
+    emit changed();
+}
+
 void BoardModel::apply(pyrelite::Direction dir)
 {
     if (m_game.tryMove(dir))
-        emit playerMoved();
+        emitChanged();
 }
 
 void BoardModel::moveUp()
@@ -94,11 +115,11 @@ void BoardModel::moveRight()
 void BoardModel::placeBomb()
 {
     if (m_game.placeBomb())
-        emit bombsChanged();
+        emitChanged();
 }
 
 void BoardModel::update(int deltaMs)
 {
     if (m_game.update(deltaMs))
-        emit bombsChanged();
+        emitChanged();
 }

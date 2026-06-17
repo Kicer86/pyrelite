@@ -18,9 +18,9 @@ Window {
     readonly property real cell: Math.floor(Math.min(width / board.columns,
                                                       height / board.rows))
 
-    // Drives bomb fuses in the core, once per rendered frame. FrameAnimation is
-    // tied to the render loop (requestAnimationFrame on web), so it keeps ticking
-    // even when idle — unlike a QTimer, which on WASM only advances on input.
+    // Drives bomb fuses + explosions in the core, once per rendered frame.
+    // FrameAnimation is tied to the render loop (requestAnimationFrame on web),
+    // so it keeps ticking even when idle — unlike a QTimer.
     FrameAnimation {
         running: true
         onTriggered: board.update(Math.round(frameTime * 1000))
@@ -69,7 +69,12 @@ Window {
 
                         readonly property int cx: index % board.columns
                         readonly property int cy: Math.floor(index / board.columns)
-                        readonly property int tile: board.tileAt(cx, cy)
+                        // Re-read the tile whenever the board changes (revision),
+                        // so destroyed bricks turn to floor.
+                        readonly property int tile: {
+                            board.revision
+                            return board.tileAt(cx, cy)
+                        }
 
                         width: root.cell
                         height: root.cell
@@ -97,6 +102,22 @@ Window {
                     border.width: 2
                     x: board.bombX(index) * root.cell + (root.cell - width) / 2
                     y: board.bombY(index) * root.cell + (root.cell - height) / 2
+                }
+            }
+
+            // Explosion flames
+            Repeater {
+                model: board.explosionCount
+
+                Rectangle {
+                    required property int index
+
+                    width: root.cell * 0.92
+                    height: root.cell * 0.92
+                    radius: 4
+                    color: "#ff8c1a"
+                    x: board.explosionX(index) * root.cell + (root.cell - width) / 2
+                    y: board.explosionY(index) * root.cell + (root.cell - height) / 2
                 }
             }
 
