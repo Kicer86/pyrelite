@@ -6,36 +6,49 @@ import PyreliteApp
 Window {
     id: root
     visible: true
-    width: board.columns * cell
-    height: board.rows * cell
     title: "Pyrelite"
     color: "#1b1b1b"
 
-    readonly property int cell: 40
-
     BoardModel { id: board }
 
-    Grid {
-        columns: board.columns
-        rows: board.rows
+    // On the web, fill the browser viewport; on desktop use a comfortable
+    // resizable window. Either way the board scales to fit (below).
+    readonly property bool onWeb: Qt.platform.os === "wasm"
+    width: onWeb ? Screen.width : 960
+    height: onWeb ? Screen.height : 820
 
-        Repeater {
-            model: board.columns * board.rows
+    // Square cells sized to fill the available area, preserving aspect ratio.
+    readonly property real cell: Math.floor(Math.min(width / board.columns,
+                                                      height / board.rows))
 
-            Rectangle {
-                required property int index
+    Item {
+        width: board.columns * root.cell
+        height: board.rows * root.cell
+        anchors.centerIn: parent
 
-                readonly property int cx: index % board.columns
-                readonly property int cy: Math.floor(index / board.columns)
-                readonly property int tile: board.tileAt(cx, cy)
+        Grid {
+            anchors.fill: parent
+            columns: board.columns
+            rows: board.rows
 
-                width: root.cell
-                height: root.cell
-                color: tile === BoardModel.Wall ? "#555a5e"
-                     : tile === BoardModel.Brick ? "#9c6b3c"
-                     : "#3a7d3a"
-                border.color: "#2a2a2a"
-                border.width: 1
+            Repeater {
+                model: board.columns * board.rows
+
+                Rectangle {
+                    required property int index
+
+                    readonly property int cx: index % board.columns
+                    readonly property int cy: Math.floor(index / board.columns)
+                    readonly property int tile: board.tileAt(cx, cy)
+
+                    width: root.cell
+                    height: root.cell
+                    color: tile === BoardModel.Wall ? "#555a5e"
+                         : tile === BoardModel.Brick ? "#9c6b3c"
+                         : "#3a7d3a"
+                    border.color: "#2a2a2a"
+                    border.width: 1
+                }
             }
         }
     }
