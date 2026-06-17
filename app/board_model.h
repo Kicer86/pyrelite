@@ -4,17 +4,18 @@
 #include <QObject>
 #include <QtQml/qqmlregistration.h>
 
-#include "grid.h"
+#include "game.h"
 
-// Thin QML-facing adapter over a core arena grid. Owns the generated board and
-// exposes its size + per-cell tile to QML. (Generation is deterministic; the
-// run seed will be wired in later.)
+// QML-facing adapter over the core Game: exposes board size, per-cell tiles,
+// the player position, and movement commands.
 class BoardModel : public QObject
 {
     Q_OBJECT
     QML_ELEMENT
     Q_PROPERTY(int columns READ columns CONSTANT)
     Q_PROPERTY(int rows READ rows CONSTANT)
+    Q_PROPERTY(int playerX READ playerX NOTIFY playerMoved)
+    Q_PROPERTY(int playerY READ playerY NOTIFY playerMoved)
 
 public:
     enum Tile { Empty, Wall, Brick };
@@ -22,11 +23,23 @@ public:
 
     explicit BoardModel(QObject *parent = nullptr);
 
-    int columns() const { return grid_.width(); }
-    int rows() const { return grid_.height(); }
+    int columns() const;
+    int rows() const;
+    int playerX() const;
+    int playerY() const;
 
     Q_INVOKABLE int tileAt(int x, int y) const;
 
+    Q_INVOKABLE void moveUp();
+    Q_INVOKABLE void moveDown();
+    Q_INVOKABLE void moveLeft();
+    Q_INVOKABLE void moveRight();
+
+signals:
+    void playerMoved();
+
 private:
-    pyrelite::Grid grid_;
+    void apply(pyrelite::Direction dir);
+
+    pyrelite::Game game_;
 };
