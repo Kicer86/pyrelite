@@ -9,6 +9,7 @@ runs:
       uses: mymindstorm/setup-emsdk@v14
       with:
         version: 4.0.7
+        actions-cache-folder: emsdk-cache-4.0.7
 
     - name: Install Qt (WebAssembly)
       uses: jurplel/install-qt-action@v4
@@ -17,6 +18,7 @@ runs:
         host: all_os
         target: wasm
         arch: wasm_singlethread
+        cache: true
         # install-qt-action adds --autodesktop, which also installs the matching
         # desktop Qt and exports QT_ROOT_DIR (wasm) and QT_HOST_PATH (desktop).
 
