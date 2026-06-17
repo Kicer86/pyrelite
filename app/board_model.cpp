@@ -155,6 +155,17 @@ void BoardModel::placeBomb()
 
 void BoardModel::update(int deltaMs)
 {
-    if (m_game.update(deltaMs))
+    if (deltaMs <= 0)
+        return;
+
+    m_accumulator += deltaMs;
+    bool changed = false;
+    while (m_accumulator >= kStepMs)
+    {
+        m_accumulator -= kStepMs;
+        if (m_game.update(kStepMs))
+            changed = true;
+    }
+    if (changed)
         emitChanged();
 }
