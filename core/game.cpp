@@ -198,8 +198,21 @@ namespace pyrelite
         }
     }
 
+    void Game::setBombLimit(int limit)
+    {
+        m_bombLimit = std::max(1, limit);
+    }
+
+    void Game::setBombRange(int range)
+    {
+        m_bombRange = std::max(1, range);
+    }
+
     bool Game::update(int deltaMs)
     {
+        if (deltaMs <= 0)
+            return false;
+
         bool changed = false;
 
         // Age flames.

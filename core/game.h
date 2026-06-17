@@ -56,9 +56,9 @@ namespace pyrelite
         const std::vector<PowerUp> &powerUps() const { return m_powerUps; }
 
         int bombLimit() const { return m_bombLimit; }
-        void setBombLimit(int limit) { m_bombLimit = limit; }
+        void setBombLimit(int limit);
         int bombRange() const { return m_bombRange; }
-        void setBombRange(int range) { m_bombRange = range; }
+        void setBombRange(int range);
         int playerSpeed() const { return m_playerSpeed; }
 
         bool hasBombAt(int x, int y) const;
