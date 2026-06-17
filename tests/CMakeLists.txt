@@ -26,3 +26,7 @@ gtest_discover_tests(bomb_test)
 add_executable(explosion_test explosion_test.cpp)
 target_link_libraries(explosion_test PRIVATE core GTest::gmock_main)
 gtest_discover_tests(explosion_test)
+
+add_executable(power_up_test power_up_test.cpp)
+target_link_libraries(power_up_test PRIVATE core GTest::gmock_main)
+gtest_discover_tests(power_up_test)

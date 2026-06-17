@@ -12,17 +12,36 @@ namespace pyrelite
     {
         constexpr int kBombFuseMs = 2000;
         constexpr int kExplosionMs = 400;
+
+        PowerUpType randomPowerUpType(Rng &rng)
+        {
+            switch (rng.below(3))
+            {
+            case 0:
+                return PowerUpType::BombLimit;
+            case 1:
+                return PowerUpType::BombRange;
+            default:
+                return PowerUpType::Speed;
+            }
+        }
     }
 
     Game::Game(Grid grid)
+        : Game(std::move(grid), 1)
+    {
+    }
+
+    Game::Game(Grid grid, std::uint64_t seed)
         : m_grid(std::move(grid))
         , m_playerX(1)
         , m_playerY(1)
+        , m_powerUpRng(seed)
     {
     }
 
     Game::Game(int width, int height, std::uint64_t seed)
-        : Game(generateArena(width, height, seed))
+        : Game(generateArena(width, height, seed), seed)
     {
     }
 
@@ -41,6 +60,16 @@ namespace pyrelite
         for (const Explosion &flame : m_explosions)
         {
             if (flame.x == x && flame.y == y)
+                return true;
+        }
+        return false;
+    }
+
+    bool Game::hasPowerUpAt(int x, int y) const
+    {
+        for (const PowerUp &powerUp : m_powerUps)
+        {
+            if (powerUp.x == x && powerUp.y == y)
                 return true;
         }
         return false;
@@ -77,6 +106,7 @@ namespace pyrelite
 
         m_playerX = nx;
         m_playerY = ny;
+        collectPowerUpAtPlayer();
         return true;
     }
 
@@ -94,6 +124,41 @@ namespace pyrelite
     void Game::addExplosion(int x, int y)
     {
         m_explosions.push_back(Explosion{x, y, kExplosionMs});
+    }
+
+    void Game::dropPowerUp(int x, int y)
+    {
+        m_powerUps.push_back(PowerUp{x, y, randomPowerUpType(m_powerUpRng)});
+    }
+
+    void Game::applyPowerUp(PowerUpType type)
+    {
+        switch (type)
+        {
+        case PowerUpType::BombLimit:
+            ++m_bombLimit;
+            break;
+        case PowerUpType::BombRange:
+            ++m_bombRange;
+            break;
+        case PowerUpType::Speed:
+            ++m_playerSpeed;
+            break;
+        }
+    }
+
+    void Game::collectPowerUpAtPlayer()
+    {
+        const auto it = std::find_if(m_powerUps.begin(), m_powerUps.end(),
+            [this](const PowerUp &powerUp)
+            {
+                return powerUp.x == m_playerX && powerUp.y == m_playerY;
+            });
+        if (it != m_powerUps.end())
+        {
+            applyPowerUp(it->type);
+            m_powerUps.erase(it);
+        }
     }
 
     void Game::explode(const Bomb &bomb)
@@ -123,6 +188,7 @@ namespace pyrelite
                 if (m_grid.at(x, y) == Tile::Brick)
                 {
                     m_grid.set(x, y, Tile::Empty);
+                    dropPowerUp(x, y);
                     break;
                 }
             }

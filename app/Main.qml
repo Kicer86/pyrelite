@@ -87,6 +87,29 @@ Window {
                 }
             }
 
+            // Power-ups
+            Repeater {
+                model: board.powerUpCount
+
+                Rectangle {
+                    required property int index
+
+                    readonly property int kind: board.powerUpType(index)
+
+                    width: root.cell * 0.42
+                    height: root.cell * 0.42
+                    radius: 3
+                    rotation: 45
+                    color: kind === BoardModel.BombLimitPowerUp ? "#2fb8ac"
+                         : kind === BoardModel.BombRangePowerUp ? "#4f8cff"
+                         : "#d85ce6"
+                    border.color: "#111111"
+                    border.width: 2
+                    x: board.powerUpX(index) * root.cell + (root.cell - width) / 2
+                    y: board.powerUpY(index) * root.cell + (root.cell - height) / 2
+                }
+            }
+
             // Bombs
             Repeater {
                 model: board.bombCount
@@ -132,8 +155,8 @@ Window {
                 x: board.playerX * root.cell + (root.cell - width) / 2
                 y: board.playerY * root.cell + (root.cell - height) / 2
 
-                Behavior on x { NumberAnimation { duration: 80 } }
-                Behavior on y { NumberAnimation { duration: 80 } }
+                Behavior on x { NumberAnimation { duration: board.playerMoveMs } }
+                Behavior on y { NumberAnimation { duration: board.playerMoveMs } }
             }
         }
     }
