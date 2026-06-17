@@ -8,7 +8,7 @@ qt_add_executable(pyrelite
 )
 
 qt_add_qml_module(pyrelite
-    URI Pyrelite
+    URI PyreliteApp
     VERSION 1.0
     QML_FILES
         Main.qml

@@ -1,0 +1,54 @@
+
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install GoogleTest / GoogleMock
+        run: sudo apt-get update && sudo apt-get install -y libgtest-dev libgmock-dev
+
+      - name: Configure (core + tests only, no Qt)
+        run: cmake -B build -DPYRELITE_BUILD_APP=OFF
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+  build:
+    name: build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # windows-latest omitted for now: aqtinstall can't fetch the Updates.xml
+        # checksum for Qt 6.11.1 on Windows (Qt mirror issue, not our config). Revisit.
+        os: [ubuntu-latest, ubuntu-22.04, macos-latest, macos-15-intel]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux OpenGL headers
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dev
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.11.1'
+
+      - name: Configure
+        env:
+          CMAKE_PREFIX_PATH: ${{ env.QT_ROOT_DIR }}
+        run: cmake -B build -DBUILD_TESTING=OFF -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release
