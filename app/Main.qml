@@ -18,9 +18,16 @@ Window {
     readonly property real cell: Math.floor(Math.min(width / board.columns,
                                                       height / board.rows))
 
-    // Full-window scene: owns keyboard focus and routes movement keys. On web
-    // the canvas needs active focus for key events, so we force it on load and
-    // re-grab it on any click.
+    // Drives bomb fuses in the core, once per rendered frame. FrameAnimation is
+    // tied to the render loop (requestAnimationFrame on web), so it keeps ticking
+    // even when idle — unlike a QTimer, which on WASM only advances on input.
+    FrameAnimation {
+        running: true
+        onTriggered: board.update(Math.round(frameTime * 1000))
+    }
+
+    // Full-window scene: owns keyboard focus and routes input. On web the canvas
+    // needs active focus for key events, so we force it on load and on click.
     Item {
         id: scene
         anchors.fill: parent
@@ -34,6 +41,7 @@ Window {
             case Qt.Key_Down:  case Qt.Key_S: board.moveDown();  event.accepted = true; break
             case Qt.Key_Left:  case Qt.Key_A: board.moveLeft();  event.accepted = true; break
             case Qt.Key_Right: case Qt.Key_D: board.moveRight(); event.accepted = true; break
+            case Qt.Key_Space:                board.placeBomb(); event.accepted = true; break
             }
         }
 
@@ -71,6 +79,24 @@ Window {
                         border.color: "#2a2a2a"
                         border.width: 1
                     }
+                }
+            }
+
+            // Bombs
+            Repeater {
+                model: board.bombCount
+
+                Rectangle {
+                    required property int index
+
+                    width: root.cell * 0.6
+                    height: root.cell * 0.6
+                    radius: width / 2
+                    color: "#222222"
+                    border.color: "#000000"
+                    border.width: 2
+                    x: board.bombX(index) * root.cell + (root.cell - width) / 2
+                    y: board.bombY(index) * root.cell + (root.cell - height) / 2
                 }
             }
 
