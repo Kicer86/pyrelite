@@ -3,41 +3,48 @@
 
 #include <cstdint>
 
-namespace {
-constexpr int kColumns = 13;
-constexpr int kRows = 11;
-constexpr std::uint64_t kSeed = 1; // fixed for now; run seeds come later
-} // namespace
+namespace
+{
+    constexpr int kColumns = 13;
+    constexpr int kRows = 11;
+    constexpr std::uint64_t kSeed = 1; // fixed for now; run seeds come later
+}
 
 BoardModel::BoardModel(QObject *parent)
     : QObject(parent)
-    , game_(kColumns, kRows, kSeed)
+    , m_game(kColumns, kRows, kSeed)
 {
 }
 
 int BoardModel::columns() const
 {
-    return game_.grid().width();
+    return m_game.grid().width();
 }
 
 int BoardModel::rows() const
 {
-    return game_.grid().height();
+    return m_game.grid().height();
 }
 
 int BoardModel::playerX() const
 {
-    return game_.playerX();
+    return m_game.playerX();
 }
 
 int BoardModel::playerY() const
 {
-    return game_.playerY();
+    return m_game.playerY();
+}
+
+int BoardModel::bombCount() const
+{
+    return static_cast<int>(m_game.bombs().size());
 }
 
 int BoardModel::tileAt(int x, int y) const
 {
-    switch (game_.grid().at(x, y)) {
+    switch (m_game.grid().at(x, y))
+    {
     case pyrelite::Tile::Wall:
         return Wall;
     case pyrelite::Tile::Brick:
@@ -48,9 +55,19 @@ int BoardModel::tileAt(int x, int y) const
     return Empty;
 }
 
+int BoardModel::bombX(int index) const
+{
+    return m_game.bombs().at(index).x;
+}
+
+int BoardModel::bombY(int index) const
+{
+    return m_game.bombs().at(index).y;
+}
+
 void BoardModel::apply(pyrelite::Direction dir)
 {
-    if (game_.tryMove(dir))
+    if (m_game.tryMove(dir))
         emit playerMoved();
 }
 
@@ -72,4 +89,16 @@ void BoardModel::moveLeft()
 void BoardModel::moveRight()
 {
     apply(pyrelite::Direction::Right);
+}
+
+void BoardModel::placeBomb()
+{
+    if (m_game.placeBomb())
+        emit bombsChanged();
+}
+
+void BoardModel::update(int deltaMs)
+{
+    if (m_game.update(deltaMs))
+        emit bombsChanged();
 }
