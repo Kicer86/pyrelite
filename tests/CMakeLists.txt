@@ -18,3 +18,7 @@ gtest_discover_tests(arena_test)
 add_executable(game_test game_test.cpp)
 target_link_libraries(game_test PRIVATE core GTest::gmock_main)
 gtest_discover_tests(game_test)
+
+add_executable(bomb_test bomb_test.cpp)
+target_link_libraries(bomb_test PRIVATE core GTest::gmock_main)
+gtest_discover_tests(bomb_test)
