@@ -19,11 +19,15 @@ class BoardModel : public QObject
     Q_PROPERTY(int playerY READ playerY NOTIFY changed)
     Q_PROPERTY(int bombCount READ bombCount NOTIFY changed)
     Q_PROPERTY(int explosionCount READ explosionCount NOTIFY changed)
+    Q_PROPERTY(int powerUpCount READ powerUpCount NOTIFY changed)
+    Q_PROPERTY(int playerMoveMs READ playerMoveMs NOTIFY changed)
     Q_PROPERTY(int revision READ revision NOTIFY changed)
 
 public:
     enum Tile { Empty, Wall, Brick };
     Q_ENUM(Tile)
+    enum PowerUp { BombLimitPowerUp, BombRangePowerUp, SpeedPowerUp };
+    Q_ENUM(PowerUp)
 
     explicit BoardModel(QObject *parent = nullptr);
 
@@ -33,6 +37,8 @@ public:
     int playerY() const;
     int bombCount() const;
     int explosionCount() const;
+    int powerUpCount() const;
+    int playerMoveMs() const;
     int revision() const { return m_revision; }
 
     Q_INVOKABLE int tileAt(int x, int y) const;
@@ -40,6 +46,9 @@ public:
     Q_INVOKABLE int bombY(int index) const;
     Q_INVOKABLE int explosionX(int index) const;
     Q_INVOKABLE int explosionY(int index) const;
+    Q_INVOKABLE int powerUpX(int index) const;
+    Q_INVOKABLE int powerUpY(int index) const;
+    Q_INVOKABLE int powerUpType(int index) const;
 
     Q_INVOKABLE void moveUp();
     Q_INVOKABLE void moveDown();

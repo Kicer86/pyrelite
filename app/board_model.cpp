@@ -1,6 +1,7 @@
 
 #include "board_model.h"
 
+#include <algorithm>
 #include <cstdint>
 
 namespace
@@ -46,6 +47,16 @@ int BoardModel::explosionCount() const
     return static_cast<int>(m_game.explosions().size());
 }
 
+int BoardModel::powerUpCount() const
+{
+    return static_cast<int>(m_game.powerUps().size());
+}
+
+int BoardModel::playerMoveMs() const
+{
+    return std::max(30, 80 - (m_game.playerSpeed() - 1) * 10);
+}
+
 int BoardModel::tileAt(int x, int y) const
 {
     switch (m_game.grid().at(x, y))
@@ -78,6 +89,30 @@ int BoardModel::explosionX(int index) const
 int BoardModel::explosionY(int index) const
 {
     return m_game.explosions().at(index).y;
+}
+
+int BoardModel::powerUpX(int index) const
+{
+    return m_game.powerUps().at(index).x;
+}
+
+int BoardModel::powerUpY(int index) const
+{
+    return m_game.powerUps().at(index).y;
+}
+
+int BoardModel::powerUpType(int index) const
+{
+    switch (m_game.powerUps().at(index).type)
+    {
+    case pyrelite::PowerUpType::BombLimit:
+        return BombLimitPowerUp;
+    case pyrelite::PowerUpType::BombRange:
+        return BombRangePowerUp;
+    case pyrelite::PowerUpType::Speed:
+        break;
+    }
+    return SpeedPowerUp;
 }
 
 void BoardModel::emitChanged()
