@@ -8,9 +8,11 @@ on:
 permissions:
   contents: write
 
+# Serialize every write to gh-pages (deploy + previews share this group) so
+# GitHub Pages never runs overlapping builds, which fail.
 concurrency:
-  group: pages-deploy
-  cancel-in-progress: true
+  group: pages
+  cancel-in-progress: false
 
 jobs:
   deploy:
