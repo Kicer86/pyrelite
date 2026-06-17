@@ -6,9 +6,6 @@ import PyreliteApp
 Window {
     id: root
 
-    // On the web each HTML container is a QScreen; a fullscreen window uses the
-    // entire screen area, so this fills the (full-viewport) canvas. On desktop
-    // use a normal resizable window. Either way the board scales to fit (below).
     visibility: Qt.platform.os === "wasm" ? Window.FullScreen : Window.Windowed
     width: 960
     height: 820
@@ -18,38 +15,78 @@ Window {
 
     BoardModel { id: board }
 
-    // Square cells sized to fill the available area, preserving aspect ratio.
     readonly property real cell: Math.floor(Math.min(width / board.columns,
                                                       height / board.rows))
 
+    // Full-window scene: owns keyboard focus and routes movement keys. On web
+    // the canvas needs active focus for key events, so we force it on load and
+    // re-grab it on any click.
     Item {
-        width: board.columns * root.cell
-        height: board.rows * root.cell
-        anchors.centerIn: parent
+        id: scene
+        anchors.fill: parent
+        focus: true
 
-        Grid {
+        Component.onCompleted: forceActiveFocus()
+
+        Keys.onPressed: (event) => {
+            switch (event.key) {
+            case Qt.Key_Up:    case Qt.Key_W: board.moveUp();    event.accepted = true; break
+            case Qt.Key_Down:  case Qt.Key_S: board.moveDown();  event.accepted = true; break
+            case Qt.Key_Left:  case Qt.Key_A: board.moveLeft();  event.accepted = true; break
+            case Qt.Key_Right: case Qt.Key_D: board.moveRight(); event.accepted = true; break
+            }
+        }
+
+        MouseArea {
             anchors.fill: parent
-            columns: board.columns
-            rows: board.rows
+            onPressed: scene.forceActiveFocus()
+        }
 
-            Repeater {
-                model: board.columns * board.rows
+        Item {
+            id: boardView
+            width: board.columns * root.cell
+            height: board.rows * root.cell
+            anchors.centerIn: parent
 
-                Rectangle {
-                    required property int index
+            Grid {
+                anchors.fill: parent
+                columns: board.columns
+                rows: board.rows
 
-                    readonly property int cx: index % board.columns
-                    readonly property int cy: Math.floor(index / board.columns)
-                    readonly property int tile: board.tileAt(cx, cy)
+                Repeater {
+                    model: board.columns * board.rows
 
-                    width: root.cell
-                    height: root.cell
-                    color: tile === BoardModel.Wall ? "#555a5e"
-                         : tile === BoardModel.Brick ? "#9c6b3c"
-                         : "#3a7d3a"
-                    border.color: "#2a2a2a"
-                    border.width: 1
+                    Rectangle {
+                        required property int index
+
+                        readonly property int cx: index % board.columns
+                        readonly property int cy: Math.floor(index / board.columns)
+                        readonly property int tile: board.tileAt(cx, cy)
+
+                        width: root.cell
+                        height: root.cell
+                        color: tile === BoardModel.Wall ? "#555a5e"
+                             : tile === BoardModel.Brick ? "#9c6b3c"
+                             : "#3a7d3a"
+                        border.color: "#2a2a2a"
+                        border.width: 1
+                    }
                 }
+            }
+
+            // Player
+            Rectangle {
+                width: root.cell * 0.7
+                height: root.cell * 0.7
+                radius: width / 2
+                color: "#e0d040"
+                border.color: "#3a3210"
+                border.width: 2
+                x: board.playerX * root.cell + (root.cell - width) / 2
+                y: board.playerY * root.cell + (root.cell - height) / 2
+
+                Behavior on x { NumberAnimation { duration: 80 } }
+                Behavior on y { NumberAnimation { duration: 80 } }
             }
         }
     }
