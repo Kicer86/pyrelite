@@ -2,6 +2,7 @@
 #include "game.h"
 
 #include <algorithm>
+#include <stdexcept>
 #include <utility>
 
 #include "arena.h"
@@ -38,6 +39,8 @@ namespace pyrelite
         , m_playerY(1)
         , m_powerUpRng(seed)
     {
+        if (!m_grid.inBounds(1, 1) || m_grid.at(1, 1) != Tile::Empty)
+            throw std::invalid_argument("Spawn cell (1,1) must be in-bounds and empty");
     }
 
     Game::Game(int width, int height, std::uint64_t seed)
