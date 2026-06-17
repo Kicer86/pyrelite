@@ -1,0 +1,39 @@
+
+name: Build web (WebAssembly)
+description: Build the Pyrelite Qt Quick app for WebAssembly into ./public
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Emscripten
+      uses: mymindstorm/setup-emsdk@v14
+      with:
+        version: 4.0.7
+
+    - name: Install Qt (WebAssembly)
+      uses: jurplel/install-qt-action@v4
+      with:
+        version: '6.11.1'
+        host: all_os
+        target: wasm
+        arch: wasm_singlethread
+        # install-qt-action adds --autodesktop, which also installs the matching
+        # desktop Qt and exports QT_ROOT_DIR (wasm) and QT_HOST_PATH (desktop).
+
+    - name: Build (WebAssembly)
+      shell: bash
+      run: |
+        chmod +x "$QT_ROOT_DIR/bin/qt-cmake"
+        "$QT_ROOT_DIR/bin/qt-cmake" -S . -B build-wasm -DBUILD_TESTING=OFF -DCMAKE_BUILD_TYPE=Release
+        cmake --build build-wasm
+
+    - name: Assemble site
+      shell: bash
+      run: |
+        mkdir -p public
+        cp build-wasm/app/pyrelite.html public/index.html
+        cp build-wasm/app/pyrelite.js public/
+        cp build-wasm/app/pyrelite.wasm public/
+        cp build-wasm/app/qtloader.js public/ 2>/dev/null || true
+        cp build-wasm/app/*.svg public/ 2>/dev/null || true
+        touch public/.nojekyll
