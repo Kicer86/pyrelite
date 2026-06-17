@@ -9,9 +9,10 @@ permissions:
   contents: write
   pull-requests: write
 
+# Shared with deploy.yml: serialize gh-pages writes (see deploy.yml).
 concurrency:
-  group: preview-${{ github.ref }}
-  cancel-in-progress: true
+  group: pages
+  cancel-in-progress: false
 
 jobs:
   preview:
