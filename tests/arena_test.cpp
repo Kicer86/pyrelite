@@ -50,6 +50,23 @@ TEST(ArenaTest, SpawnCornerIsClear)
     EXPECT_EQ(g.at(1, 2), Tile::Empty);
 }
 
+TEST(ArenaTest, TooSmallThrows)
+{
+    EXPECT_THROW(generateArena(4, 11, 1), std::invalid_argument);
+    EXPECT_THROW(generateArena(13, 4, 1), std::invalid_argument);
+    EXPECT_THROW(generateArena(3, 3, 1), std::invalid_argument);
+}
+
+TEST(ArenaTest, MinimumSizeWorks)
+{
+    Grid g = generateArena(5, 5, 1);
+    EXPECT_EQ(g.width(), 5);
+    EXPECT_EQ(g.height(), 5);
+    EXPECT_EQ(g.at(1, 1), Tile::Empty);
+    EXPECT_EQ(g.at(2, 1), Tile::Empty);
+    EXPECT_EQ(g.at(1, 2), Tile::Empty);
+}
+
 TEST(ArenaTest, OnlyKnownTiles)
 {
     Grid g = generateArena(13, 11, 5);

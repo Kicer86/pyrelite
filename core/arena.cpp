@@ -1,6 +1,8 @@
 
 #include "arena.h"
 
+#include <stdexcept>
+
 #include "rng.h"
 
 namespace pyrelite {
@@ -23,6 +25,9 @@ bool isPillar(int x, int y)
 
 Grid generateArena(int width, int height, std::uint64_t seed)
 {
+    if (width < 5 || height < 5)
+        throw std::invalid_argument("Arena must be at least 5x5");
+
     Grid grid(width, height);
     Rng rng(seed);
 
