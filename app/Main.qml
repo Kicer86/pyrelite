@@ -18,12 +18,12 @@ Window {
     readonly property real cell: Math.floor(Math.min(width / board.columns,
                                                       height / board.rows))
 
-    // Drives bomb fuses in the core.
-    Timer {
-        interval: 16
+    // Drives bomb fuses in the core, once per rendered frame. FrameAnimation is
+    // tied to the render loop (requestAnimationFrame on web), so it keeps ticking
+    // even when idle — unlike a QTimer, which on WASM only advances on input.
+    FrameAnimation {
         running: true
-        repeat: true
-        onTriggered: board.update(interval)
+        onTriggered: board.update(Math.round(frameTime * 1000))
     }
 
     // Full-window scene: owns keyboard focus and routes input. On web the canvas
