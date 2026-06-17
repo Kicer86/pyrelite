@@ -5,17 +5,18 @@ import PyreliteApp
 
 Window {
     id: root
-    visible: true
+
+    // On the web each HTML container is a QScreen; a fullscreen window uses the
+    // entire screen area, so this fills the (full-viewport) canvas. On desktop
+    // use a normal resizable window. Either way the board scales to fit (below).
+    visibility: Qt.platform.os === "wasm" ? Window.FullScreen : Window.Windowed
+    width: 960
+    height: 820
+
     title: "Pyrelite"
     color: "#1b1b1b"
 
     BoardModel { id: board }
-
-    // On the web, fill the browser viewport; on desktop use a comfortable
-    // resizable window. Either way the board scales to fit (below).
-    readonly property bool onWeb: Qt.platform.os === "wasm"
-    width: onWeb ? Screen.width : 960
-    height: onWeb ? Screen.height : 820
 
     // Square cells sized to fill the available area, preserving aspect ratio.
     readonly property real cell: Math.floor(Math.min(width / board.columns,
