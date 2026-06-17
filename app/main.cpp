@@ -11,7 +11,7 @@ int main(int argc, char *argv[])
         &engine, &QQmlApplicationEngine::objectCreationFailed,
         &app, []() { QCoreApplication::exit(-1); },
         Qt::QueuedConnection);
-    engine.loadFromModule("Pyrelite", "Main");
+    engine.loadFromModule("PyreliteApp", "Main");
 
     return app.exec();
 }
