@@ -5,6 +5,8 @@ qt_standard_project_setup(REQUIRES 6.5)
 
 qt_add_executable(pyrelite
     main.cpp
+    board_model.h
+    board_model.cpp
 )
 
 qt_add_qml_module(pyrelite
