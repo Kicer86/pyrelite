@@ -64,6 +64,9 @@ private:
     void apply(pyrelite::Direction dir);
     void emitChanged();
 
+    static constexpr int kStepMs = 16;
+
     pyrelite::Game m_game;
     int m_revision = 0;
+    int m_accumulator = 0;
 };
