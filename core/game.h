@@ -15,10 +15,18 @@ namespace pyrelite
         int x;
         int y;
         int fuseMs;
+        int range;
     };
 
-    // Central game state: the arena grid, the player, and active bombs. Future
-    // slices (explosions, enemies, power-ups) extend this aggregate. No Qt.
+    struct Explosion
+    {
+        int x;
+        int y;
+        int lifeMs;
+    };
+
+    // Central game state: the arena grid, the player, active bombs, and live
+    // explosion flames. Future slices (enemies, power-ups) extend this. No Qt.
     class Game
     {
     public:
@@ -33,8 +41,15 @@ namespace pyrelite
         int playerY() const { return m_playerY; }
 
         const std::vector<Bomb> &bombs() const { return m_bombs; }
+        const std::vector<Explosion> &explosions() const { return m_explosions; }
+
         int bombLimit() const { return m_bombLimit; }
+        void setBombLimit(int limit) { m_bombLimit = limit; }
+        int bombRange() const { return m_bombRange; }
+        void setBombRange(int range) { m_bombRange = range; }
+
         bool hasBombAt(int x, int y) const;
+        bool hasExplosionAt(int x, int y) const;
 
         // Step the player one cell in dir if the target is walkable. Returns
         // true if the player actually moved.
@@ -44,17 +59,23 @@ namespace pyrelite
         // (under the bomb limit, and no bomb already on that cell).
         bool placeBomb();
 
-        // Advance bomb fuses by deltaMs. Returns true if any bomb was removed
-        // (detonation effects come in a later slice).
+        // Advance fuses and flames by deltaMs. A bomb whose fuse elapses explodes
+        // in a cross up to its range, stopped by walls, destroying one brick per
+        // arm and chain-detonating bombs caught in the blast. Returns true if
+        // anything visible changed (bombs, flames, or destroyed bricks).
         bool update(int deltaMs);
 
     private:
         bool walkable(int x, int y) const;
+        void explode(const Bomb &bomb);
+        void addExplosion(int x, int y);
 
         Grid m_grid;
         int m_playerX;
         int m_playerY;
         std::vector<Bomb> m_bombs;
+        std::vector<Explosion> m_explosions;
         int m_bombLimit = 1;
+        int m_bombRange = 2;
     };
 } // namespace pyrelite
