@@ -6,9 +6,6 @@ import PyreliteApp
 Window {
     id: root
 
-    // On the web each HTML container is a QScreen; a fullscreen window uses the
-    // entire screen area, so this fills the (full-viewport) canvas. On desktop
-    // use a normal resizable window. Either way the board scales to fit (below).
     visibility: Qt.platform.os === "wasm" ? Window.FullScreen : Window.Windowed
     width: 960
     height: 820
@@ -18,14 +15,24 @@ Window {
 
     BoardModel { id: board }
 
-    // Square cells sized to fill the available area, preserving aspect ratio.
     readonly property real cell: Math.floor(Math.min(width / board.columns,
                                                       height / board.rows))
 
     Item {
+        id: boardView
         width: board.columns * root.cell
         height: board.rows * root.cell
         anchors.centerIn: parent
+
+        focus: true
+        Keys.onPressed: (event) => {
+            switch (event.key) {
+            case Qt.Key_Up:    case Qt.Key_W: board.moveUp();    event.accepted = true; break
+            case Qt.Key_Down:  case Qt.Key_S: board.moveDown();  event.accepted = true; break
+            case Qt.Key_Left:  case Qt.Key_A: board.moveLeft();  event.accepted = true; break
+            case Qt.Key_Right: case Qt.Key_D: board.moveRight(); event.accepted = true; break
+            }
+        }
 
         Grid {
             anchors.fill: parent
@@ -51,6 +58,21 @@ Window {
                     border.width: 1
                 }
             }
+        }
+
+        // Player
+        Rectangle {
+            width: root.cell * 0.7
+            height: root.cell * 0.7
+            radius: width / 2
+            color: "#e0d040"
+            border.color: "#3a3210"
+            border.width: 2
+            x: board.playerX * root.cell + (root.cell - width) / 2
+            y: board.playerY * root.cell + (root.cell - height) / 2
+
+            Behavior on x { NumberAnimation { duration: 80 } }
+            Behavior on y { NumberAnimation { duration: 80 } }
         }
     }
 }
