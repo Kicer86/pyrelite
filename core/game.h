@@ -2,6 +2,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 #include "grid.h"
@@ -73,6 +74,14 @@ namespace pyrelite
         // (under the bomb limit, and no bomb already on that cell).
         bool placeBomb();
 
+        // Queue an input intent to be applied at the start of the next update()
+        // step, so input resolves in a deterministic order with the rest of the
+        // simulation instead of mutating state directly between frames. The
+        // latest queued move wins; a queued bomb is placed before the move, so a
+        // "drop and run" leaves the bomb on the cell the player steps off.
+        void queueMove(Direction dir);
+        void queueBomb();
+
         // Advance fuses and flames by deltaMs. A bomb whose fuse elapses explodes
         // in a cross up to its range, stopped by walls, destroying one brick per
         // arm and chain-detonating bombs caught in the blast. Returns true if
@@ -86,6 +95,7 @@ namespace pyrelite
         void dropPowerUp(int x, int y);
         void collectPowerUpAtPlayer();
         void applyPowerUp(PowerUpType type);
+        bool drainInput();
 
         Grid m_grid;
         int m_playerX;
@@ -97,5 +107,7 @@ namespace pyrelite
         int m_bombRange = 2;
         int m_playerSpeed = 1;
         Rng m_powerUpRng;
+        std::optional<Direction> m_pendingMove;
+        bool m_pendingBomb = false;
     };
 } // namespace pyrelite
