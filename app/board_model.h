@@ -23,6 +23,7 @@ class BoardModel : public QObject
     Q_PROPERTY(int bombCount READ bombCount NOTIFY changed)
     Q_PROPERTY(int explosionCount READ explosionCount NOTIFY changed)
     Q_PROPERTY(int powerUpCount READ powerUpCount NOTIFY changed)
+    Q_PROPERTY(int enemyCount READ enemyCount NOTIFY changed)
     Q_PROPERTY(int revision READ revision NOTIFY changed)
     Q_PROPERTY(QString version READ version CONSTANT)
 
@@ -43,6 +44,7 @@ public:
     int bombCount() const;
     int explosionCount() const;
     int powerUpCount() const;
+    int enemyCount() const;
     int revision() const { return m_revision; }
     QString version() const;
 
@@ -54,6 +56,10 @@ public:
     Q_INVOKABLE int powerUpX(int index) const;
     Q_INVOKABLE int powerUpY(int index) const;
     Q_INVOKABLE int powerUpType(int index) const;
+    // Enemy positions in fractional tile units, so continuous movement renders
+    // straight from the core (like the player) with no view-side easing.
+    Q_INVOKABLE qreal enemyX(int index) const;
+    Q_INVOKABLE qreal enemyY(int index) const;
 
     // Held-key movement: a press sets the direction, a release clears it only if it
     // is still the active one (last press wins). The core moves the player on its tick.
