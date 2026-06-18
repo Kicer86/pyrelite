@@ -2,6 +2,7 @@
 #include "game.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <stdexcept>
 #include <utility>
 
@@ -20,6 +21,18 @@ namespace pyrelite
         // power-up adds one sub-unit/ms. Tunable balance knobs.
         constexpr int kBaseSpeedUnitsPerMs = 3;
         constexpr int kSpeedStepUnitsPerMs = 1;
+
+        // Enemies crawl slower than the player's base speed so they stay dodgeable.
+        constexpr int kEnemySpeedUnitsPerMs = 2;
+
+        // How many wanderers a generated arena seeds, and how far (Manhattan tiles)
+        // they must spawn from the player pocket so the opening is never a death trap.
+        constexpr int kEnemyCount = 3;
+        constexpr int kEnemySpawnMinDistance = 4;
+
+        // Decorrelate the enemy RNG stream from the power-up one (same seed would
+        // otherwise tie drops to spawns); golden-ratio offset, splitmix64-friendly.
+        constexpr std::uint64_t kEnemySeedOffset = 0x9E3779B97F4A7C15ULL;
 
         PowerUpType randomPowerUpType(Rng &rng)
         {
@@ -62,6 +75,13 @@ namespace pyrelite
                 return std::max(cur - maxStep, target);
             return cur;
         }
+
+        // The tile a moving entity occupies: the centre nearest its sub-position,
+        // matching how the player maps sub-units to a tile.
+        int tileOf(int sub)
+        {
+            return (sub + kSubcell / 2) / kSubcell;
+        }
     }
 
     Game::Game(Grid grid)
@@ -76,6 +96,7 @@ namespace pyrelite
         , m_targetSubX(kSubcell)
         , m_targetSubY(kSubcell)
         , m_powerUpRng(seed)
+        , m_enemyRng(seed + kEnemySeedOffset)
     {
         if (!m_grid.inBounds(1, 1) || m_grid.at(1, 1) != Tile::Empty)
             throw std::invalid_argument("Spawn cell (1,1) must be in-bounds and empty");
@@ -84,6 +105,7 @@ namespace pyrelite
     Game::Game(int width, int height, std::uint64_t seed)
         : Game(generateArena(width, height, seed), seed)
     {
+        spawnEnemies(kEnemyCount);
     }
 
     bool Game::hasBombAt(int x, int y) const
@@ -116,10 +138,60 @@ namespace pyrelite
         return false;
     }
 
+    bool Game::hasEnemyAt(int x, int y) const
+    {
+        for (const Enemy &enemy : m_enemies)
+        {
+            if (tileOf(enemy.subX) == x && tileOf(enemy.subY) == y)
+                return true;
+        }
+        return false;
+    }
+
     bool Game::walkable(int x, int y) const
     {
         return m_grid.inBounds(x, y) && m_grid.at(x, y) == Tile::Empty
             && !hasBombAt(x, y);
+    }
+
+    bool Game::addEnemy(int tileX, int tileY)
+    {
+        if (!m_grid.inBounds(tileX, tileY) || m_grid.at(tileX, tileY) != Tile::Empty)
+            return false;
+
+        const int sx = tileX * kSubcell;
+        const int sy = tileY * kSubcell;
+        m_enemies.push_back(Enemy{sx, sy, sx, sy, Direction::Down, EnemyType::Wanderer});
+        return true;
+    }
+
+    // Deterministically seed up to count wanderers on empty tiles a safe distance
+    // from the player pocket. Candidates are gathered in row-major order, then drawn
+    // (and removed) with the enemy RNG, so the same seed always yields the same set.
+    void Game::spawnEnemies(int count)
+    {
+        std::vector<std::pair<int, int>> candidates;
+        for (int y = 0; y < m_grid.height(); ++y)
+        {
+            for (int x = 0; x < m_grid.width(); ++x)
+            {
+                if (m_grid.at(x, y) != Tile::Empty)
+                    continue;
+                if (std::abs(x - 1) + std::abs(y - 1) < kEnemySpawnMinDistance)
+                    continue;
+                candidates.emplace_back(x, y);
+            }
+        }
+
+        for (int placed = 0; placed < count && !candidates.empty(); ++placed)
+        {
+            const std::size_t pick = m_enemyRng.below(
+                static_cast<std::uint32_t>(candidates.size()));
+            const auto [x, y] = candidates[pick];
+            addEnemy(x, y);
+            candidates[pick] = candidates.back();
+            candidates.pop_back();
+        }
     }
 
     bool Game::tryMove(Direction dir)
@@ -209,6 +281,56 @@ namespace pyrelite
 
         collectPowerUpAtPlayer();
         return true;
+    }
+
+    // Wanderer AI, grid-locked like the player: only when centred does it pick a
+    // heading — keep going straight if that tile is walkable, otherwise turn to a
+    // uniformly random walkable direction (so it bounces off walls and roams). With
+    // no way out it sits still. Then it crawls toward the committed target tile.
+    bool Game::integrateEnemy(Enemy &enemy, int deltaMs)
+    {
+        const bool centred = enemy.subX == enemy.targetSubX
+            && enemy.subY == enemy.targetSubY;
+        if (centred)
+        {
+            const int tx = enemy.subX / kSubcell;
+            const int ty = enemy.subY / kSubcell;
+
+            int ahead = tx;
+            int aheadY = ty;
+            stepTile(enemy.dir, ahead, aheadY);
+            if (!walkable(ahead, aheadY))
+            {
+                Direction options[4];
+                int count = 0;
+                for (const Direction dir : {Direction::Up, Direction::Down,
+                         Direction::Left, Direction::Right})
+                {
+                    int nx = tx;
+                    int ny = ty;
+                    stepTile(dir, nx, ny);
+                    if (walkable(nx, ny))
+                        options[count++] = dir;
+                }
+                if (count == 0)
+                    return false; // boxed in
+
+                enemy.dir = options[m_enemyRng.below(static_cast<std::uint32_t>(count))];
+                ahead = tx;
+                aheadY = ty;
+                stepTile(enemy.dir, ahead, aheadY);
+            }
+
+            enemy.targetSubX = ahead * kSubcell;
+            enemy.targetSubY = aheadY * kSubcell;
+        }
+
+        const int v = kEnemySpeedUnitsPerMs * deltaMs;
+        const int beforeX = enemy.subX;
+        const int beforeY = enemy.subY;
+        enemy.subX = approach(enemy.subX, enemy.targetSubX, v);
+        enemy.subY = approach(enemy.subY, enemy.targetSubY, v);
+        return enemy.subX != beforeX || enemy.subY != beforeY;
     }
 
     void Game::addExplosion(int x, int y)
@@ -308,6 +430,12 @@ namespace pyrelite
         bool changed = drainBomb();
         if (integrateMovement(deltaMs))
             changed = true;
+
+        for (Enemy &enemy : m_enemies)
+        {
+            if (integrateEnemy(enemy, deltaMs))
+                changed = true;
+        }
 
         // Age flames.
         for (Explosion &flame : m_explosions)
