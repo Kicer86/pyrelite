@@ -88,3 +88,54 @@ TEST(GameTest, GeneratedArenaSpawnIsUsable)
     EXPECT_TRUE(game.tryMove(Direction::Right));
     EXPECT_EQ(game.playerX(), 2);
 }
+
+TEST(GameTest, QueuedMoveAppliesOnUpdate)
+{
+    Game game = makeRoom();
+    game.queueMove(Direction::Down);
+    EXPECT_EQ(game.playerY(), 1); // not applied until the tick
+    EXPECT_TRUE(game.update(16));
+    EXPECT_EQ(game.playerY(), 2);
+}
+
+TEST(GameTest, QueuedBombPlacedOnUpdate)
+{
+    Game game = makeRoom();
+    game.queueBomb();
+    EXPECT_TRUE(game.bombs().empty()); // not applied until the tick
+    EXPECT_TRUE(game.update(16));
+    EXPECT_EQ(game.bombs().size(), 1u);
+}
+
+TEST(GameTest, QueuedBombThenMoveDropsAndRuns)
+{
+    Game game = makeRoom();
+    game.queueBomb();
+    game.queueMove(Direction::Down);
+    EXPECT_TRUE(game.update(16));
+    ASSERT_EQ(game.bombs().size(), 1u);
+    EXPECT_EQ(game.bombs().front().x, 1);
+    EXPECT_EQ(game.bombs().front().y, 1); // bomb left on the spawn cell
+    EXPECT_EQ(game.playerX(), 1);
+    EXPECT_EQ(game.playerY(), 2);         // player stepped off it
+}
+
+TEST(GameTest, QueuedMoveIsConsumedOnce)
+{
+    Game game = makeRoom();
+    game.queueMove(Direction::Down);
+    EXPECT_TRUE(game.update(16));
+    EXPECT_EQ(game.playerY(), 2);
+    game.update(16); // nothing queued -> player stays put
+    EXPECT_EQ(game.playerY(), 2);
+}
+
+TEST(GameTest, LatestQueuedMoveWins)
+{
+    Game game = makeRoom();
+    game.queueMove(Direction::Down);  // valid, but...
+    game.queueMove(Direction::Right); // ...overwrites it; (2,1) is a brick
+    EXPECT_FALSE(game.update(16));     // Right is blocked, nothing changed
+    EXPECT_EQ(game.playerX(), 1);
+    EXPECT_EQ(game.playerY(), 1);      // Down was discarded
+}
