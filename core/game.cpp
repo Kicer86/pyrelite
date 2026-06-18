@@ -124,6 +124,37 @@ namespace pyrelite
         return true;
     }
 
+    void Game::queueMove(Direction dir)
+    {
+        m_pendingMove = dir;
+    }
+
+    void Game::queueBomb()
+    {
+        m_pendingBomb = true;
+    }
+
+    // Apply queued input at a single deterministic point per step: the bomb (on
+    // the current cell) first, then the move (which may step off it). Each intent
+    // is one-shot. Returns whether anything visible changed.
+    bool Game::drainInput()
+    {
+        bool changed = false;
+        if (m_pendingBomb)
+        {
+            if (placeBomb())
+                changed = true;
+            m_pendingBomb = false;
+        }
+        if (m_pendingMove)
+        {
+            if (tryMove(*m_pendingMove))
+                changed = true;
+            m_pendingMove.reset();
+        }
+        return changed;
+    }
+
     void Game::addExplosion(int x, int y)
     {
         m_explosions.push_back(Explosion{x, y, kExplosionMs});
@@ -216,7 +247,7 @@ namespace pyrelite
         if (deltaMs <= 0)
             return false;
 
-        bool changed = false;
+        bool changed = drainInput();
 
         // Age flames.
         for (Explosion &flame : m_explosions)

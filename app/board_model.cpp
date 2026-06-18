@@ -126,8 +126,9 @@ void BoardModel::emitChanged()
 
 void BoardModel::apply(pyrelite::Direction dir)
 {
-    if (m_game.tryMove(dir))
-        emitChanged();
+    // Buffer the intent; the core applies it inside the next update() step, so
+    // input is ordered deterministically against the rest of the simulation.
+    m_game.queueMove(dir);
 }
 
 void BoardModel::moveUp()
@@ -152,8 +153,7 @@ void BoardModel::moveRight()
 
 void BoardModel::placeBomb()
 {
-    if (m_game.placeBomb())
-        emitChanged();
+    m_game.queueBomb();
 }
 
 void BoardModel::update(double deltaMs)
