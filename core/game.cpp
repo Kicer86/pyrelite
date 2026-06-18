@@ -170,6 +170,14 @@ namespace pyrelite
     // (and removed) with the enemy RNG, so the same seed always yields the same set.
     void Game::spawnEnemies(int count)
     {
+        const auto hasEmptyNeighbour = [this](int x, int y)
+        {
+            return (m_grid.inBounds(x - 1, y) && m_grid.at(x - 1, y) == Tile::Empty)
+                || (m_grid.inBounds(x + 1, y) && m_grid.at(x + 1, y) == Tile::Empty)
+                || (m_grid.inBounds(x, y - 1) && m_grid.at(x, y - 1) == Tile::Empty)
+                || (m_grid.inBounds(x, y + 1) && m_grid.at(x, y + 1) == Tile::Empty);
+        };
+
         std::vector<std::pair<int, int>> candidates;
         for (int y = 0; y < m_grid.height(); ++y)
         {
@@ -178,6 +186,10 @@ namespace pyrelite
                 if (m_grid.at(x, y) != Tile::Empty)
                     continue;
                 if (std::abs(x - 1) + std::abs(y - 1) < kEnemySpawnMinDistance)
+                    continue;
+                // Skip pockets walled in by bricks/pillars: an enemy there could
+                // never roam, so it would just sit frozen until the player digs it out.
+                if (!hasEmptyNeighbour(x, y))
                     continue;
                 candidates.emplace_back(x, y);
             }
