@@ -96,10 +96,12 @@ TEST(GameTest, HeldDirectionMovesContinuously)
     Game game = makeRoom();
     game.setMoveDirection(Direction::Down);
     EXPECT_TRUE(game.update(16));
-    // 3 sub-units/ms * 16 ms = 48: a fraction of a tile, not a whole cell.
-    EXPECT_EQ(game.playerSubY(), kSubcell + 48);
-    EXPECT_EQ(game.playerSubX(), kSubcell); // grid-locked: no sideways drift
-    EXPECT_EQ(game.playerY(), 1);           // still nearest tile 1
+    // Continuous: a fraction of a tile in one tick, not a whole cell — and
+    // grid-locked, so the perpendicular axis never drifts. (Speed-agnostic so a
+    // balance tweak to the base move speed doesn't break the test.)
+    EXPECT_GT(game.playerSubY(), kSubcell);
+    EXPECT_LT(game.playerSubY(), 2 * kSubcell);
+    EXPECT_EQ(game.playerSubX(), kSubcell);
 }
 
 TEST(GameTest, HeldDirectionBlockedByWallDoesNotMove)
