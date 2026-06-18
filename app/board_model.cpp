@@ -1,7 +1,7 @@
 
 #include "board_model.h"
 
-#include <algorithm>
+#include <optional>
 #include <cstdint>
 
 namespace
@@ -11,6 +11,22 @@ namespace
     constexpr std::uint64_t kSeed = 1; // fixed for now; run seeds come later
     constexpr int kStepMs = 16;        // ~60 Hz simulation quantum
     constexpr double kMaxFrameMs = 250; // cap catch-up after the render loop stalls
+
+    pyrelite::Direction toCore(BoardModel::Direction dir)
+    {
+        switch (dir)
+        {
+        case BoardModel::Up:
+            return pyrelite::Direction::Up;
+        case BoardModel::Down:
+            return pyrelite::Direction::Down;
+        case BoardModel::Left:
+            return pyrelite::Direction::Left;
+        case BoardModel::Right:
+            break;
+        }
+        return pyrelite::Direction::Right;
+    }
 }
 
 BoardModel::BoardModel(QObject *parent)
@@ -30,14 +46,14 @@ int BoardModel::rows() const
     return m_game.grid().height();
 }
 
-int BoardModel::playerX() const
+qreal BoardModel::playerX() const
 {
-    return m_game.playerX();
+    return m_game.playerSubX() / static_cast<qreal>(pyrelite::kSubcell);
 }
 
-int BoardModel::playerY() const
+qreal BoardModel::playerY() const
 {
-    return m_game.playerY();
+    return m_game.playerSubY() / static_cast<qreal>(pyrelite::kSubcell);
 }
 
 int BoardModel::bombCount() const
@@ -53,11 +69,6 @@ int BoardModel::explosionCount() const
 int BoardModel::powerUpCount() const
 {
     return static_cast<int>(m_game.powerUps().size());
-}
-
-int BoardModel::playerMoveMs() const
-{
-    return std::max(30, 80 - (m_game.playerSpeed() - 1) * 10);
 }
 
 int BoardModel::tileAt(int x, int y) const
@@ -124,31 +135,18 @@ void BoardModel::emitChanged()
     emit changed();
 }
 
-void BoardModel::apply(pyrelite::Direction dir)
+void BoardModel::setDirection(Direction dir)
 {
-    // Buffer the intent; the core applies it inside the next update() step, so
-    // input is ordered deterministically against the rest of the simulation.
-    m_game.queueMove(dir);
+    m_activeDir = dir;
+    m_game.setMoveDirection(toCore(dir));
 }
 
-void BoardModel::moveUp()
+void BoardModel::clearDirection(Direction dir)
 {
-    apply(pyrelite::Direction::Up);
-}
-
-void BoardModel::moveDown()
-{
-    apply(pyrelite::Direction::Down);
-}
-
-void BoardModel::moveLeft()
-{
-    apply(pyrelite::Direction::Left);
-}
-
-void BoardModel::moveRight()
-{
-    apply(pyrelite::Direction::Right);
+    if (m_activeDir != dir)
+        return; // a different key is held; keep moving
+    m_activeDir = -1;
+    m_game.setMoveDirection(std::nullopt);
 }
 
 void BoardModel::placeBomb()

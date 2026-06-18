@@ -12,6 +12,12 @@ namespace pyrelite
 {
     enum class Direction { Up, Down, Left, Right };
 
+    // Sub-cell resolution. Moving entities (the player; later enemies) store their
+    // position in these integer sub-units, kSubcell per tile, so movement is
+    // continuous yet bit-exact on every platform (no float). That keeps seeded
+    // runs reproducible and headless asserts exact. Tile coords are pos / kSubcell.
+    inline constexpr int kSubcell = 1024;
+
     struct Bomb
     {
         int x;
@@ -41,7 +47,7 @@ namespace pyrelite
     class Game
     {
     public:
-        // Build from an existing grid; player starts at the spawn corner (1, 1).
+        // Build from an existing grid; player starts centred on the spawn tile (1, 1).
         explicit Game(Grid grid);
         Game(Grid grid, std::uint64_t seed);
 
@@ -49,8 +55,14 @@ namespace pyrelite
         Game(int width, int height, std::uint64_t seed);
 
         const Grid &grid() const { return m_grid; }
-        int playerX() const { return m_playerX; }
-        int playerY() const { return m_playerY; }
+
+        // Player position in sub-units (kSubcell per tile) for smooth rendering...
+        int playerSubX() const { return m_playerSubX; }
+        int playerSubY() const { return m_playerSubY; }
+        // ...and as the tile it currently occupies (nearest centre), used for bomb
+        // placement, pick-ups and collision.
+        int playerX() const { return (m_playerSubX + kSubcell / 2) / kSubcell; }
+        int playerY() const { return (m_playerSubY + kSubcell / 2) / kSubcell; }
 
         const std::vector<Bomb> &bombs() const { return m_bombs; }
         const std::vector<Explosion> &explosions() const { return m_explosions; }
@@ -66,40 +78,47 @@ namespace pyrelite
         bool hasExplosionAt(int x, int y) const;
         bool hasPowerUpAt(int x, int y) const;
 
-        // Step the player one cell in dir if the target is walkable. Returns
-        // true if the player actually moved.
+        // Discrete one-tile step in dir if the target tile is walkable, snapping the
+        // player onto that tile centre. Returns true if the player moved. Handy for
+        // tests/teleports; live gameplay uses setMoveDirection instead.
         bool tryMove(Direction dir);
 
-        // Drop a bomb on the player's cell. Returns true if one was placed
-        // (under the bomb limit, and no bomb already on that cell).
+        // Set (or clear, with nullopt) the held movement direction. The player moves
+        // grid-locked: it keeps travelling along the held direction, can only turn
+        // when centred on a tile, and always finishes the current step even if the
+        // key is released mid-tile. Integrated in update().
+        void setMoveDirection(std::optional<Direction> dir);
+
+        // Drop a bomb on the player's current tile. Returns true if one was placed
+        // (under the bomb limit, and no bomb already on that tile).
         bool placeBomb();
 
-        // Queue an input intent to be applied at the start of the next update()
-        // step, so input resolves in a deterministic order with the rest of the
-        // simulation instead of mutating state directly between frames. The
-        // latest queued move wins; a queued bomb is placed before the move, so a
-        // "drop and run" leaves the bomb on the cell the player steps off.
-        void queueMove(Direction dir);
+        // Queue a one-shot bomb to be placed at the start of the next update() step,
+        // so it is ordered deterministically with the rest of the simulation.
         void queueBomb();
 
-        // Advance fuses and flames by deltaMs. A bomb whose fuse elapses explodes
-        // in a cross up to its range, stopped by walls, destroying one brick per
-        // arm and chain-detonating bombs caught in the blast. Returns true if
-        // anything visible changed (bombs, flames, or destroyed bricks).
+        // Advance the simulation by deltaMs: drain the queued bomb, move the player,
+        // age flames, and detonate elapsed bombs (cross blast up to range, stopped by
+        // walls, one brick per arm, chain-detonating caught bombs). Returns true if
+        // anything visible changed.
         bool update(int deltaMs);
 
     private:
         bool walkable(int x, int y) const;
+        bool drainBomb();
+        bool integrateMovement(int deltaMs);
+        int movementUnits(int deltaMs) const;
         void explode(const Bomb &bomb);
         void addExplosion(int x, int y);
         void dropPowerUp(int x, int y);
         void collectPowerUpAtPlayer();
         void applyPowerUp(PowerUpType type);
-        bool drainInput();
 
         Grid m_grid;
-        int m_playerX;
-        int m_playerY;
+        int m_playerSubX;
+        int m_playerSubY;
+        int m_targetSubX;
+        int m_targetSubY;
         std::vector<Bomb> m_bombs;
         std::vector<Explosion> m_explosions;
         std::vector<PowerUp> m_powerUps;
@@ -107,7 +126,7 @@ namespace pyrelite
         int m_bombRange = 2;
         int m_playerSpeed = 1;
         Rng m_powerUpRng;
-        std::optional<Direction> m_pendingMove;
+        std::optional<Direction> m_heldDir;
         bool m_pendingBomb = false;
     };
 } // namespace pyrelite
