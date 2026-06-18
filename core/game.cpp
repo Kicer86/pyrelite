@@ -198,6 +198,9 @@ namespace pyrelite
         }
     }
 
+    // Both stats are floored at 1 by design: the player can always place a bomb,
+    // and a blast always reaches its neighbouring cells. A future "curse" perk
+    // that lowers these must respect that floor rather than reach 0.
     void Game::setBombLimit(int limit)
     {
         m_bombLimit = std::max(1, limit);
