@@ -14,6 +14,13 @@ namespace pyrelite
         constexpr int kBombFuseMs = 2000;
         constexpr int kExplosionMs = 400;
 
+        // Movement is expressed in sub-units per millisecond, so a frame moves
+        // movementUnits = speed * deltaMs (integer, deterministic). At kSubcell =
+        // 1024 the base speed crosses a tile in ~341 ms (~2.9 tiles/s); each Speed
+        // power-up adds one sub-unit/ms. Tunable balance knobs.
+        constexpr int kBaseSpeedUnitsPerMs = 3;
+        constexpr int kSpeedStepUnitsPerMs = 1;
+
         PowerUpType randomPowerUpType(Rng &rng)
         {
             switch (rng.below(3))
@@ -26,6 +33,35 @@ namespace pyrelite
                 return PowerUpType::Speed;
             }
         }
+
+        void stepTile(Direction dir, int &tx, int &ty)
+        {
+            switch (dir)
+            {
+            case Direction::Up:
+                --ty;
+                break;
+            case Direction::Down:
+                ++ty;
+                break;
+            case Direction::Left:
+                --tx;
+                break;
+            case Direction::Right:
+                ++tx;
+                break;
+            }
+        }
+
+        // Move cur toward target by at most maxStep, never overshooting.
+        int approach(int cur, int target, int maxStep)
+        {
+            if (cur < target)
+                return std::min(cur + maxStep, target);
+            if (cur > target)
+                return std::max(cur - maxStep, target);
+            return cur;
+        }
     }
 
     Game::Game(Grid grid)
@@ -35,8 +71,10 @@ namespace pyrelite
 
     Game::Game(Grid grid, std::uint64_t seed)
         : m_grid(std::move(grid))
-        , m_playerX(1)
-        , m_playerY(1)
+        , m_playerSubX(kSubcell)
+        , m_playerSubY(kSubcell)
+        , m_targetSubX(kSubcell)
+        , m_targetSubY(kSubcell)
         , m_powerUpRng(seed)
     {
         if (!m_grid.inBounds(1, 1) || m_grid.at(1, 1) != Tile::Empty)
@@ -86,47 +124,36 @@ namespace pyrelite
 
     bool Game::tryMove(Direction dir)
     {
-        int nx = m_playerX;
-        int ny = m_playerY;
-        switch (dir)
-        {
-        case Direction::Up:
-            --ny;
-            break;
-        case Direction::Down:
-            ++ny;
-            break;
-        case Direction::Left:
-            --nx;
-            break;
-        case Direction::Right:
-            ++nx;
-            break;
-        }
+        int tx = playerX();
+        int ty = playerY();
+        stepTile(dir, tx, ty);
 
-        if (!walkable(nx, ny))
+        if (!walkable(tx, ty))
             return false;
 
-        m_playerX = nx;
-        m_playerY = ny;
+        m_playerSubX = m_targetSubX = tx * kSubcell;
+        m_playerSubY = m_targetSubY = ty * kSubcell;
         collectPowerUpAtPlayer();
         return true;
+    }
+
+    void Game::setMoveDirection(std::optional<Direction> dir)
+    {
+        m_heldDir = dir;
     }
 
     bool Game::placeBomb()
     {
         if (static_cast<int>(m_bombs.size()) >= m_bombLimit)
             return false;
-        if (hasBombAt(m_playerX, m_playerY))
+
+        const int tx = playerX();
+        const int ty = playerY();
+        if (hasBombAt(tx, ty))
             return false;
 
-        m_bombs.push_back(Bomb{m_playerX, m_playerY, kBombFuseMs, m_bombRange});
+        m_bombs.push_back(Bomb{tx, ty, kBombFuseMs, m_bombRange});
         return true;
-    }
-
-    void Game::queueMove(Direction dir)
-    {
-        m_pendingMove = dir;
     }
 
     void Game::queueBomb()
@@ -134,25 +161,54 @@ namespace pyrelite
         m_pendingBomb = true;
     }
 
-    // Apply queued input at a single deterministic point per step: the bomb (on
-    // the current cell) first, then the move (which may step off it). Each intent
-    // is one-shot. Returns whether anything visible changed.
-    bool Game::drainInput()
+    bool Game::drainBomb()
     {
-        bool changed = false;
-        if (m_pendingBomb)
+        if (!m_pendingBomb)
+            return false;
+        m_pendingBomb = false;
+        return placeBomb();
+    }
+
+    int Game::movementUnits(int deltaMs) const
+    {
+        const int unitsPerMs = kBaseSpeedUnitsPerMs
+            + (m_playerSpeed - 1) * kSpeedStepUnitsPerMs;
+        return unitsPerMs * deltaMs;
+    }
+
+    // Grid-locked continuous movement: while a step is in progress (the player is
+    // off-centre) finish it toward the target centre, ignoring input — so a key
+    // released mid-tile still completes the step. Only when centred do we sample the
+    // held direction and, if the next tile is walkable, commit to the next step.
+    bool Game::integrateMovement(int deltaMs)
+    {
+        const bool centred = m_playerSubX == m_targetSubX && m_playerSubY == m_targetSubY;
+        if (centred)
         {
-            if (placeBomb())
-                changed = true;
-            m_pendingBomb = false;
+            if (!m_heldDir)
+                return false;
+
+            int tx = m_playerSubX / kSubcell;
+            int ty = m_playerSubY / kSubcell;
+            stepTile(*m_heldDir, tx, ty);
+            if (!walkable(tx, ty))
+                return false; // blocked against a wall/brick/bomb; stay centred
+
+            m_targetSubX = tx * kSubcell;
+            m_targetSubY = ty * kSubcell;
         }
-        if (m_pendingMove)
-        {
-            if (tryMove(*m_pendingMove))
-                changed = true;
-            m_pendingMove.reset();
-        }
-        return changed;
+
+        const int v = movementUnits(deltaMs);
+        const int beforeX = m_playerSubX;
+        const int beforeY = m_playerSubY;
+        m_playerSubX = approach(m_playerSubX, m_targetSubX, v);
+        m_playerSubY = approach(m_playerSubY, m_targetSubY, v);
+
+        if (m_playerSubX == beforeX && m_playerSubY == beforeY)
+            return false;
+
+        collectPowerUpAtPlayer();
+        return true;
     }
 
     void Game::addExplosion(int x, int y)
@@ -183,10 +239,12 @@ namespace pyrelite
 
     void Game::collectPowerUpAtPlayer()
     {
+        const int tx = playerX();
+        const int ty = playerY();
         const auto it = std::find_if(m_powerUps.begin(), m_powerUps.end(),
-            [this](const PowerUp &powerUp)
+            [tx, ty](const PowerUp &powerUp)
             {
-                return powerUp.x == m_playerX && powerUp.y == m_playerY;
+                return powerUp.x == tx && powerUp.y == ty;
             });
         if (it != m_powerUps.end())
         {
@@ -247,7 +305,9 @@ namespace pyrelite
         if (deltaMs <= 0)
             return false;
 
-        bool changed = drainInput();
+        bool changed = drainBomb();
+        if (integrateMovement(deltaMs))
+            changed = true;
 
         // Age flames.
         for (Explosion &flame : m_explosions)

@@ -35,13 +35,26 @@ Window {
 
         Component.onCompleted: forceActiveFocus()
 
+        // Held-key movement: a press sets the direction, a release clears it. Ignore
+        // auto-repeat so a held key is one sustained press, not a stream of events.
         Keys.onPressed: (event) => {
+            if (event.isAutoRepeat) { event.accepted = true; return }
             switch (event.key) {
-            case Qt.Key_Up:    case Qt.Key_W: board.moveUp();    event.accepted = true; break
-            case Qt.Key_Down:  case Qt.Key_S: board.moveDown();  event.accepted = true; break
-            case Qt.Key_Left:  case Qt.Key_A: board.moveLeft();  event.accepted = true; break
-            case Qt.Key_Right: case Qt.Key_D: board.moveRight(); event.accepted = true; break
-            case Qt.Key_Space:                board.placeBomb(); event.accepted = true; break
+            case Qt.Key_Up:    case Qt.Key_W: board.setDirection(BoardModel.Up);    event.accepted = true; break
+            case Qt.Key_Down:  case Qt.Key_S: board.setDirection(BoardModel.Down);  event.accepted = true; break
+            case Qt.Key_Left:  case Qt.Key_A: board.setDirection(BoardModel.Left);  event.accepted = true; break
+            case Qt.Key_Right: case Qt.Key_D: board.setDirection(BoardModel.Right); event.accepted = true; break
+            case Qt.Key_Space:                board.placeBomb();                    event.accepted = true; break
+            }
+        }
+
+        Keys.onReleased: (event) => {
+            if (event.isAutoRepeat) { event.accepted = true; return }
+            switch (event.key) {
+            case Qt.Key_Up:    case Qt.Key_W: board.clearDirection(BoardModel.Up);    event.accepted = true; break
+            case Qt.Key_Down:  case Qt.Key_S: board.clearDirection(BoardModel.Down);  event.accepted = true; break
+            case Qt.Key_Left:  case Qt.Key_A: board.clearDirection(BoardModel.Left);  event.accepted = true; break
+            case Qt.Key_Right: case Qt.Key_D: board.clearDirection(BoardModel.Right); event.accepted = true; break
             }
         }
 
@@ -144,7 +157,8 @@ Window {
                 }
             }
 
-            // Player
+            // Player — position comes from the core in fractional tile units, so the
+            // continuous movement renders directly (no Behavior easing needed).
             Rectangle {
                 width: root.cell * 0.7
                 height: root.cell * 0.7
@@ -154,9 +168,6 @@ Window {
                 border.width: 2
                 x: board.playerX * root.cell + (root.cell - width) / 2
                 y: board.playerY * root.cell + (root.cell - height) / 2
-
-                Behavior on x { NumberAnimation { duration: board.playerMoveMs } }
-                Behavior on y { NumberAnimation { duration: board.playerMoveMs } }
             }
         }
     }
