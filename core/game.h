@@ -42,6 +42,10 @@ namespace pyrelite
         PowerUpType type;
     };
 
+    // Playing until the player either clears every enemy (Won) or is caught by a
+    // flame or an enemy (Lost). Both end states freeze the simulation.
+    enum class GameState { Playing, Won, Lost };
+
     enum class EnemyType { Wanderer };
 
     // A moving hazard. Like the player it lives in sub-units (kSubcell per tile)
@@ -70,6 +74,8 @@ namespace pyrelite
         Game(int width, int height, std::uint64_t seed);
 
         const Grid &grid() const { return m_grid; }
+
+        GameState state() const { return m_state; }
 
         // Player position in sub-units (kSubcell per tile) for smooth rendering...
         int playerSubX() const { return m_playerSubX; }
@@ -120,9 +126,10 @@ namespace pyrelite
         void queueBomb();
 
         // Advance the simulation by deltaMs: drain the queued bomb, move the player,
-        // move the enemies, age flames, and detonate elapsed bombs (cross blast up to
-        // range, stopped by walls, one brick per arm, chain-detonating caught bombs).
-        // Returns true if anything visible changed.
+        // move the enemies, age flames, detonate elapsed bombs (cross blast up to
+        // range, stopped by walls, one brick per arm, chain-detonating caught bombs),
+        // then settle deaths. A no-op once the game has ended. Returns true if
+        // anything visible changed.
         bool update(int deltaMs);
 
     private:
@@ -130,6 +137,7 @@ namespace pyrelite
         bool drainBomb();
         bool integrateMovement(int deltaMs);
         bool integrateEnemy(Enemy &enemy, int deltaMs);
+        bool resolveDeaths();
         void spawnEnemies(int count);
         int movementUnits(int deltaMs) const;
         void explode(const Bomb &bomb);
@@ -152,6 +160,7 @@ namespace pyrelite
         int m_playerSpeed = 1;
         Rng m_powerUpRng;
         Rng m_enemyRng;
+        GameState m_state = GameState::Playing;
         std::optional<Direction> m_heldDir;
         bool m_pendingBomb = false;
     };

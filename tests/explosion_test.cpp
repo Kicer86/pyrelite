@@ -94,6 +94,7 @@ TEST(ExplosionTest, FlamesExpire)
     Game game = makeOpenRoom(7);
     moveTo(game, 3, 3);
     game.placeBomb();
+    moveTo(game, 1, 1); // step clear of the blast so the run keeps ticking
     game.update(2000);
     EXPECT_TRUE(game.hasExplosionAt(3, 3));
 
