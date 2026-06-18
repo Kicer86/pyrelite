@@ -9,11 +9,14 @@ namespace
     constexpr int kColumns = 13;
     constexpr int kRows = 11;
     constexpr std::uint64_t kSeed = 1; // fixed for now; run seeds come later
+    constexpr int kStepMs = 16;        // ~60 Hz simulation quantum
+    constexpr double kMaxFrameMs = 250; // cap catch-up after the render loop stalls
 }
 
 BoardModel::BoardModel(QObject *parent)
     : QObject(parent)
     , m_game(kColumns, kRows, kSeed)
+    , m_step(kStepMs, kMaxFrameMs)
 {
 }
 
@@ -153,8 +156,15 @@ void BoardModel::placeBomb()
         emitChanged();
 }
 
-void BoardModel::update(int deltaMs)
+void BoardModel::update(double deltaMs)
 {
-    if (m_game.update(deltaMs))
+    const int steps = m_step.advance(deltaMs);
+    bool changed = false;
+    for (int i = 0; i < steps; ++i)
+    {
+        if (m_game.update(m_step.stepMs()))
+            changed = true;
+    }
+    if (changed)
         emitChanged();
 }

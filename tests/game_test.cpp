@@ -59,6 +59,26 @@ TEST(GameTest, BlockedByBrick)
     EXPECT_EQ(game.playerY(), 1);
 }
 
+TEST(GameTest, SpawnOutOfBoundsThrows)
+{
+    Grid g(1, 1);
+    EXPECT_THROW((Game{g}), std::invalid_argument);
+}
+
+TEST(GameTest, SpawnOnWallThrows)
+{
+    Grid g(5, 5);
+    g.set(1, 1, Tile::Wall);
+    EXPECT_THROW((Game{g}), std::invalid_argument);
+}
+
+TEST(GameTest, SpawnOnBrickThrows)
+{
+    Grid g(5, 5);
+    g.set(1, 1, Tile::Brick);
+    EXPECT_THROW((Game{g}), std::invalid_argument);
+}
+
 TEST(GameTest, GeneratedArenaSpawnIsUsable)
 {
     Game game(13, 11, 1);
