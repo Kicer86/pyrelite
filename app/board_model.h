@@ -25,6 +25,7 @@ class BoardModel : public QObject
     Q_PROPERTY(int powerUpCount READ powerUpCount NOTIFY changed)
     Q_PROPERTY(int enemyCount READ enemyCount NOTIFY changed)
     Q_PROPERTY(int revision READ revision NOTIFY changed)
+    Q_PROPERTY(State state READ state NOTIFY changed)
     Q_PROPERTY(QString version READ version CONSTANT)
 
 public:
@@ -34,6 +35,8 @@ public:
     Q_ENUM(PowerUp)
     enum Direction { Up, Down, Left, Right };
     Q_ENUM(Direction)
+    enum State { Playing, Won, Lost };
+    Q_ENUM(State)
 
     explicit BoardModel(QObject *parent = nullptr);
 
@@ -46,6 +49,7 @@ public:
     int powerUpCount() const;
     int enemyCount() const;
     int revision() const { return m_revision; }
+    State state() const;
     QString version() const;
 
     Q_INVOKABLE int tileAt(int x, int y) const;
@@ -67,6 +71,8 @@ public:
     Q_INVOKABLE void clearDirection(Direction dir);
     Q_INVOKABLE void placeBomb();
     Q_INVOKABLE void update(double deltaMs);
+    // Start a fresh run (same arena) after a win or loss.
+    Q_INVOKABLE void restart();
 
 signals:
     void changed();
