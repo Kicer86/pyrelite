@@ -4,6 +4,8 @@
 #include <optional>
 #include <cstdint>
 
+#include "version.h"
+
 namespace
 {
     constexpr int kColumns = 13;
@@ -69,6 +71,12 @@ int BoardModel::explosionCount() const
 int BoardModel::powerUpCount() const
 {
     return static_cast<int>(m_game.powerUps().size());
+}
+
+QString BoardModel::version() const
+{
+    return QString::fromLatin1(pyrelite::kGitSha) + QStringLiteral(" · ")
+         + QString::fromLatin1(pyrelite::kBuildDate);
 }
 
 int BoardModel::tileAt(int x, int y) const

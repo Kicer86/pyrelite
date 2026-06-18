@@ -170,5 +170,20 @@ Window {
                 y: board.playerY * root.cell + (root.cell - height) / 2
             }
         }
+
+        // Build stamp: which commit/date is actually running. Lives in the
+        // corner so the deployed web build (and every PR preview) is verifiable
+        // at a glance. Doesn't grab input, so focus-on-click still works.
+        Text {
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            anchors.margins: 6
+
+            text: board.version
+            color: "#cccccc"
+            opacity: 0.55
+            font.pixelSize: 12
+            font.family: "monospace"
+        }
     }
 }
