@@ -18,7 +18,13 @@ jobs:
   preview:
     runs-on: ubuntu-latest
     steps:
+      # Check out the PR's head commit, not the default merge ref. The merge
+      # ref's SHA exists on no branch, so the in-app version stamp would show a
+      # commit you can't find in the repo. The head SHA matches the PR's latest
+      # commit. On 'closed' the branch may be gone, so fall back to the default.
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.action != 'closed' && github.event.pull_request.head.sha || '' }}
 
       - name: Build web
         if: github.event.action != 'closed'
