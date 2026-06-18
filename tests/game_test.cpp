@@ -1,6 +1,8 @@
 
 #include "game.h"
 
+#include <optional>
+
 #include <gtest/gtest.h>
 
 #include "grid.h"
@@ -89,12 +91,51 @@ TEST(GameTest, GeneratedArenaSpawnIsUsable)
     EXPECT_EQ(game.playerX(), 2);
 }
 
-TEST(GameTest, QueuedMoveAppliesOnUpdate)
+TEST(GameTest, HeldDirectionMovesContinuously)
 {
     Game game = makeRoom();
-    game.queueMove(Direction::Down);
-    EXPECT_EQ(game.playerY(), 1); // not applied until the tick
+    game.setMoveDirection(Direction::Down);
     EXPECT_TRUE(game.update(16));
+    // 3 sub-units/ms * 16 ms = 48: a fraction of a tile, not a whole cell.
+    EXPECT_EQ(game.playerSubY(), kSubcell + 48);
+    EXPECT_EQ(game.playerSubX(), kSubcell); // grid-locked: no sideways drift
+    EXPECT_EQ(game.playerY(), 1);           // still nearest tile 1
+}
+
+TEST(GameTest, HeldDirectionBlockedByWallDoesNotMove)
+{
+    Game game = makeRoom();
+    game.setMoveDirection(Direction::Up); // (1,0) is a wall
+    for (int i = 0; i < 10; ++i)
+        EXPECT_FALSE(game.update(16));
+    EXPECT_EQ(game.playerSubY(), kSubcell); // never left the spawn centre
+}
+
+TEST(GameTest, FinishesStepAfterRelease)
+{
+    Game game = makeRoom();
+    game.setMoveDirection(Direction::Down);
+    EXPECT_TRUE(game.update(16));        // committed, now off-centre
+    game.setMoveDirection(std::nullopt); // release mid-tile
+    for (int i = 0; i < 40; ++i)
+        game.update(16);
+    EXPECT_EQ(game.playerSubY(), 2 * kSubcell); // finished the committed step...
+    EXPECT_EQ(game.playerY(), 2);
+    EXPECT_FALSE(game.update(16));              // ...and then stays put
+    EXPECT_EQ(game.playerSubY(), 2 * kSubcell);
+}
+
+TEST(GameTest, TurnsOnlyWhenCentred)
+{
+    Game game = makeRoom();
+    game.setMoveDirection(Direction::Down);
+    game.update(16);                        // off-centre, heading down
+    game.setMoveDirection(Direction::Right);
+    game.update(16);                        // still finishing the down step
+    EXPECT_EQ(game.playerSubX(), kSubcell); // no diagonal: did not turn mid-tile
+    for (int i = 0; i < 60; ++i)
+        game.update(16);
+    EXPECT_GE(game.playerX(), 2);           // turned right once centred at (1,2)
     EXPECT_EQ(game.playerY(), 2);
 }
 
@@ -104,38 +145,24 @@ TEST(GameTest, QueuedBombPlacedOnUpdate)
     game.queueBomb();
     EXPECT_TRUE(game.bombs().empty()); // not applied until the tick
     EXPECT_TRUE(game.update(16));
-    EXPECT_EQ(game.bombs().size(), 1u);
+    ASSERT_EQ(game.bombs().size(), 1u);
+    EXPECT_EQ(game.bombs().front().x, 1);
+    EXPECT_EQ(game.bombs().front().y, 1);
 }
 
-TEST(GameTest, QueuedBombThenMoveDropsAndRuns)
+TEST(GameTest, QueuedBombThenHeldMoveDropsAndRuns)
 {
     Game game = makeRoom();
     game.queueBomb();
-    game.queueMove(Direction::Down);
+    game.setMoveDirection(Direction::Down);
     EXPECT_TRUE(game.update(16));
     ASSERT_EQ(game.bombs().size(), 1u);
     EXPECT_EQ(game.bombs().front().x, 1);
-    EXPECT_EQ(game.bombs().front().y, 1); // bomb left on the spawn cell
-    EXPECT_EQ(game.playerX(), 1);
-    EXPECT_EQ(game.playerY(), 2);         // player stepped off it
-}
-
-TEST(GameTest, QueuedMoveIsConsumedOnce)
-{
-    Game game = makeRoom();
-    game.queueMove(Direction::Down);
-    EXPECT_TRUE(game.update(16));
-    EXPECT_EQ(game.playerY(), 2);
-    game.update(16); // nothing queued -> player stays put
-    EXPECT_EQ(game.playerY(), 2);
-}
-
-TEST(GameTest, LatestQueuedMoveWins)
-{
-    Game game = makeRoom();
-    game.queueMove(Direction::Down);  // valid, but...
-    game.queueMove(Direction::Right); // ...overwrites it; (2,1) is a brick
-    EXPECT_FALSE(game.update(16));     // Right is blocked, nothing changed
-    EXPECT_EQ(game.playerX(), 1);
-    EXPECT_EQ(game.playerY(), 1);      // Down was discarded
+    EXPECT_EQ(game.bombs().front().y, 1);   // bomb stays on the spawn tile
+    EXPECT_GT(game.playerSubY(), kSubcell);  // player has begun leaving it
+    game.setMoveDirection(std::nullopt);
+    for (int i = 0; i < 40; ++i)
+        game.update(16);
+    EXPECT_EQ(game.playerY(), 2);            // finished the step off the bomb
+    EXPECT_EQ(game.playerSubY(), 2 * kSubcell);
 }
