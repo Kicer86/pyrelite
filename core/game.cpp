@@ -2,6 +2,7 @@
 #include "game.h"
 
 #include <algorithm>
+#include <stdexcept>
 #include <utility>
 
 #include "arena.h"
@@ -38,6 +39,8 @@ namespace pyrelite
         , m_playerY(1)
         , m_powerUpRng(seed)
     {
+        if (!m_grid.inBounds(1, 1) || m_grid.at(1, 1) != Tile::Empty)
+            throw std::invalid_argument("Spawn cell (1,1) must be in-bounds and empty");
     }
 
     Game::Game(int width, int height, std::uint64_t seed)
@@ -195,8 +198,24 @@ namespace pyrelite
         }
     }
 
+    // Both stats are floored at 1 by design: the player can always place a bomb,
+    // and a blast always reaches its neighbouring cells. A future "curse" perk
+    // that lowers these must respect that floor rather than reach 0.
+    void Game::setBombLimit(int limit)
+    {
+        m_bombLimit = std::max(1, limit);
+    }
+
+    void Game::setBombRange(int range)
+    {
+        m_bombRange = std::max(1, range);
+    }
+
     bool Game::update(int deltaMs)
     {
+        if (deltaMs <= 0)
+            return false;
+
         bool changed = false;
 
         // Age flames.

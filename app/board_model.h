@@ -4,6 +4,7 @@
 #include <QObject>
 #include <QtQml/qqmlregistration.h>
 
+#include "fixed_timestep.h"
 #include "game.h"
 
 // QML-facing adapter over the core Game: board size + tiles, the player, bombs,
@@ -55,7 +56,7 @@ public:
     Q_INVOKABLE void moveLeft();
     Q_INVOKABLE void moveRight();
     Q_INVOKABLE void placeBomb();
-    Q_INVOKABLE void update(int deltaMs);
+    Q_INVOKABLE void update(double deltaMs);
 
 signals:
     void changed();
@@ -65,5 +66,6 @@ private:
     void emitChanged();
 
     pyrelite::Game m_game;
+    pyrelite::FixedTimestep m_step;
     int m_revision = 0;
 };

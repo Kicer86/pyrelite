@@ -1,6 +1,8 @@
 
 #include "arena.h"
 
+#include <stdexcept>
+
 #include "rng.h"
 
 namespace pyrelite {
@@ -23,6 +25,13 @@ bool isPillar(int x, int y)
 
 Grid generateArena(int width, int height, std::uint64_t seed)
 {
+    // 5x5 is the smallest non-degenerate arena: it leaves a real interior around
+    // the spawn pocket (the cleared cells (1,1)/(2,1)/(1,2) plus the first pillar
+    // at (2,2)). Smaller grids would push the spawn-clear cells onto the border
+    // wall (3-wide/tall) or out of bounds (<=2), corrupting the layout.
+    if (width < 5 || height < 5)
+        throw std::invalid_argument("Arena must be at least 5x5");
+
     Grid grid(width, height);
     Rng rng(seed);
 
