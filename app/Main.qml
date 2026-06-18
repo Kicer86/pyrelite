@@ -23,7 +23,7 @@ Window {
     // so it keeps ticking even when idle — unlike a QTimer.
     FrameAnimation {
         running: true
-        onTriggered: board.update(Math.round(frameTime * 1000))
+        onTriggered: board.update(frameTime * 1000)
     }
 
     // Full-window scene: owns keyboard focus and routes input. On web the canvas
