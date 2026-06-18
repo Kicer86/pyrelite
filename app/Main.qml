@@ -170,8 +170,10 @@ Window {
                     color: "#d23b3b"
                     border.color: "#3a1010"
                     border.width: 2
-                    x: board.enemyX(index) * root.cell + (root.cell - width) / 2
-                    y: board.enemyY(index) * root.cell + (root.cell - height) / 2
+                    // enemyX/Y are plain calls, not notifying properties, so depend
+                    // on revision (bumped every tick) to re-read the moving position.
+                    x: { board.revision; return board.enemyX(index) * root.cell + (root.cell - width) / 2 }
+                    y: { board.revision; return board.enemyY(index) * root.cell + (root.cell - height) / 2 }
                 }
             }
 
