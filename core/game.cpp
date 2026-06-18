@@ -345,6 +345,37 @@ namespace pyrelite
         return enemy.subX != beforeX || enemy.subY != beforeY;
     }
 
+    // Settle the consequences of this tick's positions and flames. Enemies standing
+    // in a flame die first; then the player loses if caught in a flame (including
+    // their own blast) or sharing a tile with a surviving enemy. Clearing the last
+    // enemy wins. Returns true if the outcome changed (a death or a state change).
+    bool Game::resolveDeaths()
+    {
+        const std::size_t before = m_enemies.size();
+        std::erase_if(m_enemies,
+            [this](const Enemy &enemy)
+            {
+                return hasExplosionAt(tileOf(enemy.subX), tileOf(enemy.subY));
+            });
+        const bool killedEnemy = m_enemies.size() < before;
+
+        const int px = playerX();
+        const int py = playerY();
+        if (hasExplosionAt(px, py) || hasEnemyAt(px, py))
+        {
+            m_state = GameState::Lost;
+            return true;
+        }
+
+        if (killedEnemy && m_enemies.empty())
+        {
+            m_state = GameState::Won;
+            return true;
+        }
+
+        return killedEnemy;
+    }
+
     void Game::addExplosion(int x, int y)
     {
         m_explosions.push_back(Explosion{x, y, kExplosionMs});
@@ -438,6 +469,8 @@ namespace pyrelite
     {
         if (deltaMs <= 0)
             return false;
+        if (m_state != GameState::Playing)
+            return false; // frozen once the run has ended
 
         bool changed = drainBomb();
         if (integrateMovement(deltaMs))
@@ -477,6 +510,9 @@ namespace pyrelite
             explode(bomb);
             changed = true;
         }
+
+        if (resolveDeaths())
+            changed = true;
 
         return changed;
     }
