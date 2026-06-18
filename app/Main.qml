@@ -45,6 +45,7 @@ Window {
             case Qt.Key_Left:  case Qt.Key_A: board.setDirection(BoardModel.Left);  event.accepted = true; break
             case Qt.Key_Right: case Qt.Key_D: board.setDirection(BoardModel.Right); event.accepted = true; break
             case Qt.Key_Space:                board.placeBomb();                    event.accepted = true; break
+            case Qt.Key_R:                    board.restart();                      event.accepted = true; break
             }
         }
 
@@ -188,6 +189,38 @@ Window {
                 border.width: 2
                 x: board.playerX * root.cell + (root.cell - width) / 2
                 y: board.playerY * root.cell + (root.cell - height) / 2
+            }
+        }
+
+        // End-of-run overlay: dims the arena and offers a restart on win or loss.
+        Rectangle {
+            anchors.fill: parent
+            visible: board.state !== BoardModel.Playing
+            color: Qt.rgba(0, 0, 0, 0.6)
+
+            MouseArea {
+                anchors.fill: parent
+                onClicked: { board.restart(); scene.forceActiveFocus() }
+            }
+
+            Column {
+                anchors.centerIn: parent
+                spacing: 12
+
+                Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: board.state === BoardModel.Won ? "Arena cleared!" : "Game Over"
+                    color: board.state === BoardModel.Won ? "#7ee07e" : "#ff6b6b"
+                    font.pixelSize: 44
+                    font.bold: true
+                }
+
+                Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: "Press R or click to restart"
+                    color: "#dddddd"
+                    font.pixelSize: 18
+                }
             }
         }
 

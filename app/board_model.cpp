@@ -78,6 +78,20 @@ int BoardModel::enemyCount() const
     return static_cast<int>(m_game.enemies().size());
 }
 
+BoardModel::State BoardModel::state() const
+{
+    switch (m_game.state())
+    {
+    case pyrelite::GameState::Won:
+        return Won;
+    case pyrelite::GameState::Lost:
+        return Lost;
+    case pyrelite::GameState::Playing:
+        break;
+    }
+    return Playing;
+}
+
 QString BoardModel::version() const
 {
     return QString::fromLatin1(pyrelite::kGitSha) + QStringLiteral(" · ")
@@ -179,6 +193,9 @@ void BoardModel::placeBomb()
 
 void BoardModel::update(double deltaMs)
 {
+    if (m_game.state() != pyrelite::GameState::Playing)
+        return; // run ended; nothing ticks until restart()
+
     const int steps = m_step.advance(deltaMs);
     bool changed = false;
     for (int i = 0; i < steps; ++i)
@@ -188,4 +205,12 @@ void BoardModel::update(double deltaMs)
     }
     if (changed)
         emitChanged();
+}
+
+void BoardModel::restart()
+{
+    m_game = pyrelite::Game(kColumns, kRows, kSeed);
+    m_step = pyrelite::FixedTimestep(kStepMs, kMaxFrameMs);
+    m_activeDir = -1;
+    emitChanged();
 }
