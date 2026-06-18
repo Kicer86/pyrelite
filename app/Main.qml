@@ -157,6 +157,24 @@ Window {
                 }
             }
 
+            // Enemies — fractional tile units from the core, like the player.
+            Repeater {
+                model: board.enemyCount
+
+                Rectangle {
+                    required property int index
+
+                    width: root.cell * 0.7
+                    height: root.cell * 0.7
+                    radius: width / 2
+                    color: "#d23b3b"
+                    border.color: "#3a1010"
+                    border.width: 2
+                    x: board.enemyX(index) * root.cell + (root.cell - width) / 2
+                    y: board.enemyY(index) * root.cell + (root.cell - height) / 2
+                }
+            }
+
             // Player — position comes from the core in fractional tile units, so the
             // continuous movement renders directly (no Behavior easing needed).
             Rectangle {

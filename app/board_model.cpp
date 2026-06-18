@@ -73,6 +73,11 @@ int BoardModel::powerUpCount() const
     return static_cast<int>(m_game.powerUps().size());
 }
 
+int BoardModel::enemyCount() const
+{
+    return static_cast<int>(m_game.enemies().size());
+}
+
 QString BoardModel::version() const
 {
     return QString::fromLatin1(pyrelite::kGitSha) + QStringLiteral(" · ")
@@ -121,6 +126,16 @@ int BoardModel::powerUpX(int index) const
 int BoardModel::powerUpY(int index) const
 {
     return m_game.powerUps().at(index).y;
+}
+
+qreal BoardModel::enemyX(int index) const
+{
+    return m_game.enemies().at(index).subX / static_cast<qreal>(pyrelite::kSubcell);
+}
+
+qreal BoardModel::enemyY(int index) const
+{
+    return m_game.enemies().at(index).subY / static_cast<qreal>(pyrelite::kSubcell);
 }
 
 int BoardModel::powerUpType(int index) const
