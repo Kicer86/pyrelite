@@ -1,0 +1,11 @@
+
+#pragma once
+
+// Generated from version.h.in by GenerateVersion.cmake at build time.
+// DO NOT EDIT — and do not commit the generated copy (it lives in the build dir).
+
+namespace pyrelite
+{
+    inline constexpr const char *kGitSha = "@PYRELITE_GIT_SHA@";
+    inline constexpr const char *kBuildDate = "@PYRELITE_BUILD_DATE@";
+}
