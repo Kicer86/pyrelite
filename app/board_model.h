@@ -2,6 +2,7 @@
 #pragma once
 
 #include <QObject>
+#include <QString>
 #include <QtQml/qqmlregistration.h>
 
 #include "fixed_timestep.h"
@@ -23,6 +24,7 @@ class BoardModel : public QObject
     Q_PROPERTY(int explosionCount READ explosionCount NOTIFY changed)
     Q_PROPERTY(int powerUpCount READ powerUpCount NOTIFY changed)
     Q_PROPERTY(int revision READ revision NOTIFY changed)
+    Q_PROPERTY(QString version READ version CONSTANT)
 
 public:
     enum Tile { Empty, Wall, Brick };
@@ -42,6 +44,7 @@ public:
     int explosionCount() const;
     int powerUpCount() const;
     int revision() const { return m_revision; }
+    QString version() const;
 
     Q_INVOKABLE int tileAt(int x, int y) const;
     Q_INVOKABLE int bombX(int index) const;
