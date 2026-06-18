@@ -128,6 +128,29 @@ TEST(EnemyTest, ArenaSpawnsEnemiesAwayFromPlayerPocket)
     }
 }
 
+TEST(EnemyTest, ArenaSpawnedEnemiesCanMove)
+{
+    // Every seeded enemy must have at least one empty orthogonal neighbour, so it
+    // can actually roam instead of spawning frozen inside a brick pocket.
+    for (std::uint64_t seed = 1; seed <= 8; ++seed)
+    {
+        Game game(13, 11, seed);
+        const Grid &g = game.grid();
+        for (const Enemy &e : game.enemies())
+        {
+            const int tx = e.subX / kSubcell;
+            const int ty = e.subY / kSubcell;
+            const bool canMove =
+                (g.inBounds(tx - 1, ty) && g.at(tx - 1, ty) == Tile::Empty) ||
+                (g.inBounds(tx + 1, ty) && g.at(tx + 1, ty) == Tile::Empty) ||
+                (g.inBounds(tx, ty - 1) && g.at(tx, ty - 1) == Tile::Empty) ||
+                (g.inBounds(tx, ty + 1) && g.at(tx, ty + 1) == Tile::Empty);
+            EXPECT_TRUE(canMove) << "frozen enemy at (" << tx << "," << ty
+                                 << ") seed " << seed;
+        }
+    }
+}
+
 TEST(EnemyTest, ArenaSpawnIsDeterministic)
 {
     Game a(13, 11, 7);
