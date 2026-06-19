@@ -35,6 +35,10 @@ add_executable(enemy_test enemy_test.cpp)
 target_link_libraries(enemy_test PRIVATE core GTest::gmock_main)
 gtest_discover_tests(enemy_test)
 
+add_executable(enemy_ai_test enemy_ai_test.cpp)
+target_link_libraries(enemy_ai_test PRIVATE core GTest::gmock_main)
+gtest_discover_tests(enemy_ai_test)
+
 add_executable(death_test death_test.cpp)
 target_link_libraries(death_test PRIVATE core GTest::gmock_main)
 gtest_discover_tests(death_test)
