@@ -4,6 +4,9 @@ add_library(core STATIC
     rng.cpp
     arena.cpp
     game.cpp
+    enemy.cpp
+    wanderer.cpp
+    chaser.cpp
     fixed_timestep.cpp
 )
 

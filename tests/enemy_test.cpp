@@ -60,8 +60,8 @@ TEST(EnemyTest, AddEnemyPlacesAtTileCentre)
     Game game = makeOpenRoom();
     ASSERT_TRUE(game.addEnemy(2, 3));
     ASSERT_EQ(game.enemies().size(), 1u);
-    EXPECT_EQ(game.enemies().front().subX, 2 * kSubcell);
-    EXPECT_EQ(game.enemies().front().subY, 3 * kSubcell);
+    EXPECT_EQ(game.enemies().front()->subX(), 2 * kSubcell);
+    EXPECT_EQ(game.enemies().front()->subY(), 3 * kSubcell);
     EXPECT_TRUE(game.hasEnemyAt(2, 3));
 }
 
@@ -82,8 +82,8 @@ TEST(EnemyTest, WandersAwayFromSpawn)
     bool leftStart = false;
     for (int i = 0; i < 2000 && !leftStart; ++i) {
         game.update(16);
-        const Enemy &e = game.enemies().front();
-        if (e.subX / kSubcell != 3 || e.subY / kSubcell != 3)
+        const IEnemy &e = *game.enemies().front();
+        if (e.subX() / kSubcell != 3 || e.subY() / kSubcell != 3)
             leftStart = true;
     }
     EXPECT_TRUE(leftStart);
@@ -95,8 +95,8 @@ TEST(EnemyTest, BoxedEnemyStaysPut)
     ASSERT_TRUE(game.addEnemy(3, 3));
     for (int i = 0; i < 100; ++i)
         game.update(16);
-    EXPECT_EQ(game.enemies().front().subX, 3 * kSubcell);
-    EXPECT_EQ(game.enemies().front().subY, 3 * kSubcell);
+    EXPECT_EQ(game.enemies().front()->subX(), 3 * kSubcell);
+    EXPECT_EQ(game.enemies().front()->subY(), 3 * kSubcell);
 }
 
 TEST(EnemyTest, StaysGridLocked)
@@ -107,9 +107,9 @@ TEST(EnemyTest, StaysGridLocked)
     // other axis is always exactly on a tile line — never a diagonal drift.
     for (int i = 0; i < 1000; ++i) {
         game.update(16);
-        const Enemy &e = game.enemies().front();
-        EXPECT_TRUE(e.subX % kSubcell == 0 || e.subY % kSubcell == 0)
-            << "off-grid at step " << i << ": " << e.subX << "," << e.subY;
+        const IEnemy &e = *game.enemies().front();
+        EXPECT_TRUE(e.subX() % kSubcell == 0 || e.subY() % kSubcell == 0)
+            << "off-grid at step " << i << ": " << e.subX() << "," << e.subY();
     }
 }
 
@@ -122,8 +122,8 @@ TEST(EnemyTest, MovementIsDeterministic)
     for (int i = 0; i < 500; ++i) {
         a.update(16);
         b.update(16);
-        EXPECT_EQ(a.enemies().front().subX, b.enemies().front().subX);
-        EXPECT_EQ(a.enemies().front().subY, b.enemies().front().subY);
+        EXPECT_EQ(a.enemies().front()->subX(), b.enemies().front()->subX());
+        EXPECT_EQ(a.enemies().front()->subY(), b.enemies().front()->subY());
     }
 }
 
@@ -136,10 +136,10 @@ TEST(EnemyTest, ArenaSpawnsEnemiesAwayFromPlayerPocket)
     EXPECT_FALSE(game.hasEnemyAt(1, 1));
     EXPECT_FALSE(game.hasEnemyAt(2, 1));
     EXPECT_FALSE(game.hasEnemyAt(1, 2));
-    for (const Enemy &e : game.enemies())
+    for (const auto &e : game.enemies())
     {
-        const int tx = e.subX / kSubcell;
-        const int ty = e.subY / kSubcell;
+        const int tx = e->subX() / kSubcell;
+        const int ty = e->subY() / kSubcell;
         EXPECT_GE(std::abs(tx - 1) + std::abs(ty - 1), 4);
         EXPECT_EQ(game.grid().at(tx, ty), Tile::Empty);
     }
@@ -153,10 +153,10 @@ TEST(EnemyTest, ArenaSpawnedEnemiesCanMove)
     {
         Game game(13, 11, seed);
         const Grid &g = game.grid();
-        for (const Enemy &e : game.enemies())
+        for (const auto &e : game.enemies())
         {
-            const int tx = e.subX / kSubcell;
-            const int ty = e.subY / kSubcell;
+            const int tx = e->subX() / kSubcell;
+            const int ty = e->subY() / kSubcell;
             const bool canMove =
                 (g.inBounds(tx - 1, ty) && g.at(tx - 1, ty) == Tile::Empty) ||
                 (g.inBounds(tx + 1, ty) && g.at(tx + 1, ty) == Tile::Empty) ||
@@ -175,8 +175,8 @@ TEST(EnemyTest, ArenaSpawnIsDeterministic)
     ASSERT_EQ(a.enemies().size(), b.enemies().size());
     for (std::size_t i = 0; i < a.enemies().size(); ++i)
     {
-        EXPECT_EQ(a.enemies()[i].subX, b.enemies()[i].subX);
-        EXPECT_EQ(a.enemies()[i].subY, b.enemies()[i].subY);
+        EXPECT_EQ(a.enemies()[i]->subX(), b.enemies()[i]->subX());
+        EXPECT_EQ(a.enemies()[i]->subY(), b.enemies()[i]->subY());
     }
 }
 
@@ -206,9 +206,9 @@ TEST(EnemyTest, ChaserClosesTheDistance)
 
     const auto dist = [&]
     {
-        const Enemy &e = game.enemies().front();
-        return std::abs(e.subX / kSubcell - game.playerX())
-             + std::abs(e.subY / kSubcell - game.playerY());
+        const IEnemy &e = *game.enemies().front();
+        return std::abs(e.subX() / kSubcell - game.playerX())
+             + std::abs(e.subY() / kSubcell - game.playerY());
     };
 
     const int start = dist();
@@ -234,8 +234,8 @@ TEST(EnemyTest, ChaserRoamsWhenWalledOffFromPlayer)
     for (int i = 0; i < 2000; ++i)
     {
         game.update(16);
-        const Enemy &e = game.enemies().front();
-        if (e.subX / kSubcell != 4 || e.subY / kSubcell != 4)
+        const IEnemy &e = *game.enemies().front();
+        if (e.subX() / kSubcell != 4 || e.subY() / kSubcell != 4)
             leftStart = true;
     }
     EXPECT_TRUE(leftStart);
@@ -249,9 +249,9 @@ TEST(EnemyTest, ArenaSpawnsAMixOfArchetypes)
     Game game(13, 11, 1);
     int chasers = 0;
     int wanderers = 0;
-    for (const Enemy &e : game.enemies())
+    for (const auto &e : game.enemies())
     {
-        if (e.type == EnemyType::Chaser)
+        if (e->type() == EnemyType::Chaser)
             ++chasers;
         else
             ++wanderers;

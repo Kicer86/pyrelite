@@ -2,22 +2,18 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <vector>
 
 #include "grid.h"
+#include "ienemy.h"
+#include "igame.h"
+#include "movement.h"
 #include "rng.h"
 
 namespace pyrelite
 {
-    enum class Direction { Up, Down, Left, Right };
-
-    // Sub-cell resolution. Moving entities (the player; later enemies) store their
-    // position in these integer sub-units, kSubcell per tile, so movement is
-    // continuous yet bit-exact on every platform (no float). That keeps seeded
-    // runs reproducible and headless asserts exact. Tile coords are pos / kSubcell.
-    inline constexpr int kSubcell = 1024;
-
     struct Bomb
     {
         int x;
@@ -46,26 +42,10 @@ namespace pyrelite
     // flame or an enemy (Lost). Both end states freeze the simulation.
     enum class GameState { Playing, Won, Lost };
 
-    // Wanderer roams at random (turns only when it hits a wall); Chaser greedily
-    // steps toward the player, falling back to roaming when walled off from them.
-    enum class EnemyType { Wanderer, Chaser };
-
-    // A moving hazard. Like the player it lives in sub-units (kSubcell per tile)
-    // and is grid-locked: it travels tile to tile, only choosing a new heading
-    // once centred. dir is its current heading; type selects the AI.
-    struct Enemy
-    {
-        int subX;
-        int subY;
-        int targetSubX;
-        int targetSubY;
-        Direction dir;
-        EnemyType type;
-    };
-
     // Central game state: the arena grid, the player, active bombs, and live
-    // explosion flames. Future slices (enemies) extend this. No Qt.
-    class Game
+    // explosion flames. Implements IGame so enemy AI sees only the slice it needs.
+    // No Qt.
+    class Game : public IGame
     {
     public:
         // Build from an existing grid; player starts centred on the spawn tile (1, 1).
@@ -84,13 +64,13 @@ namespace pyrelite
         int playerSubY() const { return m_playerSubY; }
         // ...and as the tile it currently occupies (nearest centre), used for bomb
         // placement, pick-ups and collision.
-        int playerX() const { return (m_playerSubX + kSubcell / 2) / kSubcell; }
-        int playerY() const { return (m_playerSubY + kSubcell / 2) / kSubcell; }
+        int playerX() const override { return (m_playerSubX + kSubcell / 2) / kSubcell; }
+        int playerY() const override { return (m_playerSubY + kSubcell / 2) / kSubcell; }
 
         const std::vector<Bomb> &bombs() const { return m_bombs; }
         const std::vector<Explosion> &explosions() const { return m_explosions; }
         const std::vector<PowerUp> &powerUps() const { return m_powerUps; }
-        const std::vector<Enemy> &enemies() const { return m_enemies; }
+        const std::vector<std::unique_ptr<IEnemy>> &enemies() const { return m_enemies; }
 
         int bombLimit() const { return m_bombLimit; }
         void setBombLimit(int limit);
@@ -102,6 +82,10 @@ namespace pyrelite
         bool hasExplosionAt(int x, int y) const;
         bool hasPowerUpAt(int x, int y) const;
         bool hasEnemyAt(int x, int y) const;
+
+        // Whether a moving entity may occupy tile (x, y): in-bounds, empty, and not
+        // blocked by a live bomb. From IGame, so enemy archetypes can navigate.
+        bool walkable(int x, int y) const override;
 
         // Place an enemy of the given archetype centred on a walkable tile. Returns
         // false (placing nothing) if the tile is out of bounds or not Empty. The real
@@ -136,12 +120,8 @@ namespace pyrelite
         bool update(int deltaMs);
 
     private:
-        bool walkable(int x, int y) const;
         bool drainBomb();
         bool integrateMovement(int deltaMs);
-        bool integrateEnemy(Enemy &enemy, int deltaMs);
-        std::optional<Direction> chooseEnemyDir(const Enemy &enemy);
-        std::optional<Direction> randomWalkableDir(int tx, int ty);
         bool resolveDeaths();
         void spawnEnemies(int count);
         int movementUnits(int deltaMs) const;
@@ -159,7 +139,7 @@ namespace pyrelite
         std::vector<Bomb> m_bombs;
         std::vector<Explosion> m_explosions;
         std::vector<PowerUp> m_powerUps;
-        std::vector<Enemy> m_enemies;
+        std::vector<std::unique_ptr<IEnemy>> m_enemies;
         int m_bombLimit = 1;
         int m_bombRange = 2;
         int m_playerSpeed = 1;

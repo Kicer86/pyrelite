@@ -165,11 +165,16 @@ Window {
                 Rectangle {
                     required property int index
 
+                    // Appearance comes entirely from the model — no per-archetype
+                    // logic here. Re-read on revision (bumped every tick): a kill
+                    // shifts indices, so the enemy at this slot can change.
+                    readonly property color fill: { board.revision; return board.enemyColor(index) }
+
                     width: root.cell * 0.7
                     height: root.cell * 0.7
                     radius: width / 2
-                    color: "#d23b3b"
-                    border.color: "#3a1010"
+                    color: fill
+                    border.color: Qt.darker(fill, 2.2)
                     border.width: 2
                     // enemyX/Y are plain calls, not notifying properties, so depend
                     // on revision (bumped every tick) to re-read the moving position.
