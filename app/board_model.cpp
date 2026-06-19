@@ -14,6 +14,23 @@ namespace
     constexpr int kStepMs = 16;        // ~60 Hz simulation quantum
     constexpr double kMaxFrameMs = 250; // cap catch-up after the render loop stalls
 
+    // Presentation only: the enemy archetype -> how it looks. This is the single
+    // place enemy art lives, kept out of the headless core and out of the QML. Today
+    // it is a placeholder fill colour; when the discs become sprites this returns an
+    // asset/animation source instead, and the generic delegate follows — no other
+    // view change, and adding an archetype adds one case here.
+    QString enemyColorFor(pyrelite::EnemyType type)
+    {
+        switch (type)
+        {
+        case pyrelite::EnemyType::Chaser:
+            return QStringLiteral("#7d3cff"); // hunter — menacing violet
+        case pyrelite::EnemyType::Wanderer:
+            break;
+        }
+        return QStringLiteral("#d23b3b"); // roamer — red
+    }
+
     pyrelite::Direction toCore(BoardModel::Direction dir)
     {
         switch (dir)
@@ -152,16 +169,9 @@ qreal BoardModel::enemyY(int index) const
     return m_game.enemies().at(index)->subY() / static_cast<qreal>(pyrelite::kSubcell);
 }
 
-int BoardModel::enemyType(int index) const
+QString BoardModel::enemyColor(int index) const
 {
-    switch (m_game.enemies().at(index)->type())
-    {
-    case pyrelite::EnemyType::Chaser:
-        return Chaser;
-    case pyrelite::EnemyType::Wanderer:
-        break;
-    }
-    return Wanderer;
+    return enemyColorFor(m_game.enemies().at(index)->type());
 }
 
 int BoardModel::powerUpType(int index) const

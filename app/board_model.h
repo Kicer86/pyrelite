@@ -37,8 +37,6 @@ public:
     Q_ENUM(Direction)
     enum State { Playing, Won, Lost };
     Q_ENUM(State)
-    enum EnemyKind { Wanderer, Chaser };
-    Q_ENUM(EnemyKind)
 
     explicit BoardModel(QObject *parent = nullptr);
 
@@ -66,8 +64,10 @@ public:
     // straight from the core (like the player) with no view-side easing.
     Q_INVOKABLE qreal enemyX(int index) const;
     Q_INVOKABLE qreal enemyY(int index) const;
-    // Archetype of the enemy at index, so the view can render each kind distinctly.
-    Q_INVOKABLE int enemyType(int index) const;
+    // How to draw the enemy at index. The view renders whatever this returns, so it
+    // carries no per-archetype logic; this is the single seam where enemy art lives
+    // (a placeholder colour today, a sprite/animation source once art lands).
+    Q_INVOKABLE QString enemyColor(int index) const;
 
     // Held-key movement: a press sets the direction, a release clears it only if it
     // is still the active one (last press wins). The core moves the player on its tick.
