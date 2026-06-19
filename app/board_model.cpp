@@ -152,6 +152,18 @@ qreal BoardModel::enemyY(int index) const
     return m_game.enemies().at(index)->subY() / static_cast<qreal>(pyrelite::kSubcell);
 }
 
+int BoardModel::enemyType(int index) const
+{
+    switch (m_game.enemies().at(index)->type())
+    {
+    case pyrelite::EnemyType::Chaser:
+        return Chaser;
+    case pyrelite::EnemyType::Wanderer:
+        break;
+    }
+    return Wanderer;
+}
+
 int BoardModel::powerUpType(int index) const
 {
     switch (m_game.powerUps().at(index).type)

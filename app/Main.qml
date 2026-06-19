@@ -165,11 +165,16 @@ Window {
                 Rectangle {
                     required property int index
 
+                    // Re-read on revision (bumped every tick): a kill shifts indices,
+                    // so the kind at this slot can change between frames.
+                    readonly property int kind: { board.revision; return board.enemyType(index) }
+
                     width: root.cell * 0.7
                     height: root.cell * 0.7
                     radius: width / 2
-                    color: "#d23b3b"
-                    border.color: "#3a1010"
+                    // Chasers (the hunters) read as a menacing violet; wanderers stay red.
+                    color: kind === BoardModel.Chaser ? "#7d3cff" : "#d23b3b"
+                    border.color: kind === BoardModel.Chaser ? "#2a1454" : "#3a1010"
                     border.width: 2
                     // enemyX/Y are plain calls, not notifying properties, so depend
                     // on revision (bumped every tick) to re-read the moving position.
