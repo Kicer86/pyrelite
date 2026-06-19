@@ -144,12 +144,12 @@ int BoardModel::powerUpY(int index) const
 
 qreal BoardModel::enemyX(int index) const
 {
-    return m_game.enemies().at(index).subX / static_cast<qreal>(pyrelite::kSubcell);
+    return m_game.enemies().at(index)->subX() / static_cast<qreal>(pyrelite::kSubcell);
 }
 
 qreal BoardModel::enemyY(int index) const
 {
-    return m_game.enemies().at(index).subY / static_cast<qreal>(pyrelite::kSubcell);
+    return m_game.enemies().at(index)->subY() / static_cast<qreal>(pyrelite::kSubcell);
 }
 
 int BoardModel::powerUpType(int index) const

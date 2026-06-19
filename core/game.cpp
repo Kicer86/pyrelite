@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "arena.h"
+#include "movement.h"
 
 namespace pyrelite
 {
@@ -22,9 +23,6 @@ namespace pyrelite
         // power-up adds one sub-unit/ms. Tunable balance knobs.
         constexpr int kBaseSpeedUnitsPerMs = 3;
         constexpr int kSpeedStepUnitsPerMs = 1;
-
-        // Enemies crawl slower than the player's base speed so they stay dodgeable.
-        constexpr int kEnemySpeedUnitsPerMs = 2;
 
         // How many enemies a generated arena seeds, and how far (Manhattan tiles)
         // they must spawn from the player pocket so the opening is never a death trap.
@@ -50,42 +48,6 @@ namespace pyrelite
             default:
                 return PowerUpType::Speed;
             }
-        }
-
-        void stepTile(Direction dir, int &tx, int &ty)
-        {
-            switch (dir)
-            {
-            case Direction::Up:
-                --ty;
-                break;
-            case Direction::Down:
-                ++ty;
-                break;
-            case Direction::Left:
-                --tx;
-                break;
-            case Direction::Right:
-                ++tx;
-                break;
-            }
-        }
-
-        // Move cur toward target by at most maxStep, never overshooting.
-        int approach(int cur, int target, int maxStep)
-        {
-            if (cur < target)
-                return std::min(cur + maxStep, target);
-            if (cur > target)
-                return std::max(cur - maxStep, target);
-            return cur;
-        }
-
-        // The tile a moving entity occupies: the centre nearest its sub-position,
-        // matching how the player maps sub-units to a tile.
-        int tileOf(int sub)
-        {
-            return (sub + kSubcell / 2) / kSubcell;
         }
     }
 
@@ -145,9 +107,9 @@ namespace pyrelite
 
     bool Game::hasEnemyAt(int x, int y) const
     {
-        for (const Enemy &enemy : m_enemies)
+        for (const auto &enemy : m_enemies)
         {
-            if (tileOf(enemy.subX) == x && tileOf(enemy.subY) == y)
+            if (enemy->tileX() == x && enemy->tileY() == y)
                 return true;
         }
         return false;
@@ -164,9 +126,7 @@ namespace pyrelite
         if (!m_grid.inBounds(tileX, tileY) || m_grid.at(tileX, tileY) != Tile::Empty)
             return false;
 
-        const int sx = tileX * kSubcell;
-        const int sy = tileY * kSubcell;
-        m_enemies.push_back(Enemy{sx, sy, sx, sy, Direction::Down, type});
+        m_enemies.push_back(makeEnemy(type, tileX, tileY));
         return true;
     }
 
@@ -303,108 +263,6 @@ namespace pyrelite
         return true;
     }
 
-    // Grid-locked like the player: only when centred does the enemy pick a new
-    // heading (per its archetype), commit to the neighbouring tile, then crawl toward
-    // it. With nowhere to go it sits still until a brick is cleared.
-    bool Game::integrateEnemy(Enemy &enemy, int deltaMs)
-    {
-        const bool centred = enemy.subX == enemy.targetSubX
-            && enemy.subY == enemy.targetSubY;
-        if (centred)
-        {
-            const std::optional<Direction> next = chooseEnemyDir(enemy);
-            if (!next)
-                return false; // boxed in
-
-            enemy.dir = *next;
-            int ahead = enemy.subX / kSubcell;
-            int aheadY = enemy.subY / kSubcell;
-            stepTile(enemy.dir, ahead, aheadY);
-            enemy.targetSubX = ahead * kSubcell;
-            enemy.targetSubY = aheadY * kSubcell;
-        }
-
-        const int v = kEnemySpeedUnitsPerMs * deltaMs;
-        const int beforeX = enemy.subX;
-        const int beforeY = enemy.subY;
-        enemy.subX = approach(enemy.subX, enemy.targetSubX, v);
-        enemy.subY = approach(enemy.subY, enemy.targetSubY, v);
-        return enemy.subX != beforeX || enemy.subY != beforeY;
-    }
-
-    // Pick a centred enemy's next heading from its tile. A Chaser greedily steps
-    // toward the player on the axis with the larger gap, then the other axis; when
-    // both are blocked it roams to route around the obstacle. A Wanderer keeps going
-    // straight while it can, else turns somewhere random. nullopt means boxed in.
-    std::optional<Direction> Game::chooseEnemyDir(const Enemy &enemy)
-    {
-        const int tx = enemy.subX / kSubcell;
-        const int ty = enemy.subY / kSubcell;
-
-        if (enemy.type == EnemyType::Chaser)
-        {
-            const int dx = playerX() - tx;
-            const int dy = playerY() - ty;
-            const Direction horiz = dx > 0 ? Direction::Right : Direction::Left;
-            const Direction vert = dy > 0 ? Direction::Down : Direction::Up;
-
-            Direction prefs[2];
-            int n = 0;
-            if (std::abs(dx) >= std::abs(dy))
-            {
-                if (dx != 0)
-                    prefs[n++] = horiz;
-                if (dy != 0)
-                    prefs[n++] = vert;
-            }
-            else
-            {
-                if (dy != 0)
-                    prefs[n++] = vert;
-                if (dx != 0)
-                    prefs[n++] = horiz;
-            }
-
-            for (int i = 0; i < n; ++i)
-            {
-                int nx = tx;
-                int ny = ty;
-                stepTile(prefs[i], nx, ny);
-                if (walkable(nx, ny))
-                    return prefs[i];
-            }
-            return randomWalkableDir(tx, ty);
-        }
-
-        int ahead = tx;
-        int aheadY = ty;
-        stepTile(enemy.dir, ahead, aheadY);
-        if (walkable(ahead, aheadY))
-            return enemy.dir; // keep going straight
-        return randomWalkableDir(tx, ty);
-    }
-
-    // A uniformly random walkable orthogonal neighbour of (tx, ty), or nullopt when
-    // the tile is boxed in. Candidates are gathered in a fixed order before the draw,
-    // so the choice is reproducible from the enemy RNG stream.
-    std::optional<Direction> Game::randomWalkableDir(int tx, int ty)
-    {
-        Direction options[4];
-        int count = 0;
-        for (const Direction dir : {Direction::Up, Direction::Down,
-                 Direction::Left, Direction::Right})
-        {
-            int nx = tx;
-            int ny = ty;
-            stepTile(dir, nx, ny);
-            if (walkable(nx, ny))
-                options[count++] = dir;
-        }
-        if (count == 0)
-            return std::nullopt;
-        return options[m_enemyRng.below(static_cast<std::uint32_t>(count))];
-    }
-
     // Settle the consequences of this tick's positions and flames. Enemies standing
     // in a flame die first; then the player loses if caught in a flame (including
     // their own blast) or sharing a tile with a surviving enemy. Clearing the last
@@ -413,9 +271,9 @@ namespace pyrelite
     {
         const std::size_t before = m_enemies.size();
         std::erase_if(m_enemies,
-            [this](const Enemy &enemy)
+            [this](const std::unique_ptr<IEnemy> &enemy)
             {
-                return hasExplosionAt(tileOf(enemy.subX), tileOf(enemy.subY));
+                return hasExplosionAt(enemy->tileX(), enemy->tileY());
             });
         const bool killedEnemy = m_enemies.size() < before;
 
@@ -536,9 +394,9 @@ namespace pyrelite
         if (integrateMovement(deltaMs))
             changed = true;
 
-        for (Enemy &enemy : m_enemies)
+        for (auto &enemy : m_enemies)
         {
-            if (integrateEnemy(enemy, deltaMs))
+            if (enemy->integrate(*this, m_enemyRng, deltaMs))
                 changed = true;
         }
 
