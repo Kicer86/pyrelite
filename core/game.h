@@ -8,6 +8,7 @@
 
 #include "enemy.h"
 #include "grid.h"
+#include "igame.h"
 #include "movement.h"
 #include "rng.h"
 
@@ -42,8 +43,9 @@ namespace pyrelite
     enum class GameState { Playing, Won, Lost };
 
     // Central game state: the arena grid, the player, active bombs, and live
-    // explosion flames. Future slices (enemies) extend this. No Qt.
-    class Game
+    // explosion flames. Implements IGame so enemy AI sees only the slice it needs.
+    // No Qt.
+    class Game : public IGame
     {
     public:
         // Build from an existing grid; player starts centred on the spawn tile (1, 1).
@@ -62,8 +64,8 @@ namespace pyrelite
         int playerSubY() const { return m_playerSubY; }
         // ...and as the tile it currently occupies (nearest centre), used for bomb
         // placement, pick-ups and collision.
-        int playerX() const { return (m_playerSubX + kSubcell / 2) / kSubcell; }
-        int playerY() const { return (m_playerSubY + kSubcell / 2) / kSubcell; }
+        int playerX() const override { return (m_playerSubX + kSubcell / 2) / kSubcell; }
+        int playerY() const override { return (m_playerSubY + kSubcell / 2) / kSubcell; }
 
         const std::vector<Bomb> &bombs() const { return m_bombs; }
         const std::vector<Explosion> &explosions() const { return m_explosions; }
@@ -82,8 +84,8 @@ namespace pyrelite
         bool hasEnemyAt(int x, int y) const;
 
         // Whether a moving entity may occupy tile (x, y): in-bounds, empty, and not
-        // blocked by a live bomb. Public so enemy archetypes can navigate.
-        bool walkable(int x, int y) const;
+        // blocked by a live bomb. From IGame, so enemy archetypes can navigate.
+        bool walkable(int x, int y) const override;
 
         // Place an enemy of the given archetype centred on a walkable tile. Returns
         // false (placing nothing) if the tile is out of bounds or not Empty. The real

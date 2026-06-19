@@ -1,11 +1,12 @@
 
 #include "wanderer.h"
 
-#include "game.h"
+#include "igame.h"
+#include "irng.h"
 
 namespace pyrelite
 {
-    std::optional<Direction> Wanderer::chooseDirection(const Game &game, Rng &rng)
+    std::optional<Direction> Wanderer::chooseDirection(const IGame &game, IRng &rng)
     {
         int ahead = tileX();
         int aheadY = tileY();

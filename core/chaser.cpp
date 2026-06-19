@@ -3,11 +3,12 @@
 
 #include <cstdlib>
 
-#include "game.h"
+#include "igame.h"
+#include "irng.h"
 
 namespace pyrelite
 {
-    std::optional<Direction> Chaser::chooseDirection(const Game &game, Rng &rng)
+    std::optional<Direction> Chaser::chooseDirection(const IGame &game, IRng &rng)
     {
         const int tx = tileX();
         const int ty = tileY();

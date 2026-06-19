@@ -2,7 +2,8 @@
 #include "enemy.h"
 
 #include "chaser.h"
-#include "game.h"
+#include "igame.h"
+#include "irng.h"
 #include "wanderer.h"
 
 namespace pyrelite
@@ -21,7 +22,7 @@ namespace pyrelite
     {
     }
 
-    bool IEnemy::integrate(const Game &game, Rng &rng, int deltaMs)
+    bool IEnemy::integrate(const IGame &game, IRng &rng, int deltaMs)
     {
         const bool centred = m_subX == m_targetSubX && m_subY == m_targetSubY;
         if (centred)
@@ -46,7 +47,7 @@ namespace pyrelite
         return m_subX != beforeX || m_subY != beforeY;
     }
 
-    std::optional<Direction> IEnemy::randomWalkableDir(const Game &game, Rng &rng) const
+    std::optional<Direction> IEnemy::randomWalkableDir(const IGame &game, IRng &rng) const
     {
         const int tx = tileX();
         const int ty = tileY();

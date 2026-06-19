@@ -5,13 +5,12 @@
 #include <memory>
 #include <optional>
 
+#include "igame.h"
+#include "irng.h"
 #include "movement.h"
-#include "rng.h"
 
 namespace pyrelite
 {
-    class Game;
-
     enum class EnemyType { Wanderer, Chaser };
 
     // A moving hazard. Like the player it lives in sub-units (kSubcell per tile) and
@@ -35,17 +34,17 @@ namespace pyrelite
         // Advance one tick: when centred, pick a new heading (per archetype) and
         // commit to that neighbouring tile, then crawl toward it. Returns true if it
         // moved. With nowhere to go it sits still until a brick is cleared.
-        bool integrate(const Game &game, Rng &rng, int deltaMs);
+        bool integrate(const IGame &game, IRng &rng, int deltaMs);
 
     protected:
         // The one thing each archetype customizes: choose the next heading from the
         // current (centred) tile, or nullopt if boxed in.
-        virtual std::optional<Direction> chooseDirection(const Game &game, Rng &rng) = 0;
+        virtual std::optional<Direction> chooseDirection(const IGame &game, IRng &rng) = 0;
 
         // A uniformly random walkable orthogonal neighbour of the current tile, or
         // nullopt when boxed in. Candidates are gathered in a fixed order before the
-        // draw, so the choice is reproducible from the enemy RNG stream.
-        std::optional<Direction> randomWalkableDir(const Game &game, Rng &rng) const;
+        // draw, so the choice is reproducible from the RNG stream.
+        std::optional<Direction> randomWalkableDir(const IGame &game, IRng &rng) const;
 
     private:
         int m_subX;

@@ -18,6 +18,6 @@ namespace pyrelite
         EnemyType type() const override { return EnemyType::Chaser; }
 
     protected:
-        std::optional<Direction> chooseDirection(const Game &game, Rng &rng) override;
+        std::optional<Direction> chooseDirection(const IGame &game, IRng &rng) override;
     };
 } // namespace pyrelite
