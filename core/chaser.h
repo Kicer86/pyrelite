@@ -10,10 +10,10 @@ namespace pyrelite
 {
     // Greedy pursuit: steps toward the player on the axis with the larger gap, then
     // the other axis; when both are blocked it roams to route around the obstacle.
-    class Chaser : public IEnemy
+    class Chaser : public Enemy
     {
     public:
-        using IEnemy::IEnemy;
+        using Enemy::Enemy;
 
         EnemyType type() const override { return EnemyType::Chaser; }
 

@@ -14,7 +14,7 @@ namespace pyrelite
         constexpr int kEnemySpeedUnitsPerMs = 2;
     }
 
-    IEnemy::IEnemy(int tileX, int tileY)
+    Enemy::Enemy(int tileX, int tileY)
         : m_subX(tileX * kSubcell)
         , m_subY(tileY * kSubcell)
         , m_targetSubX(tileX * kSubcell)
@@ -22,7 +22,7 @@ namespace pyrelite
     {
     }
 
-    bool IEnemy::integrate(const IGame &game, IRng &rng, int deltaMs)
+    bool Enemy::integrate(const IGame &game, IRng &rng, int deltaMs)
     {
         const bool centred = m_subX == m_targetSubX && m_subY == m_targetSubY;
         if (centred)
@@ -47,7 +47,7 @@ namespace pyrelite
         return m_subX != beforeX || m_subY != beforeY;
     }
 
-    std::optional<Direction> IEnemy::randomWalkableDir(const IGame &game, IRng &rng) const
+    std::optional<Direction> Enemy::randomWalkableDir(const IGame &game, IRng &rng) const
     {
         const int tx = tileX();
         const int ty = tileY();

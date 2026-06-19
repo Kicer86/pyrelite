@@ -11,10 +11,10 @@ namespace pyrelite
     // Roams at random: keeps its current heading while the tile ahead is walkable,
     // otherwise turns to a uniformly random walkable direction (so it bounces off
     // walls and meanders). Unaware of the player.
-    class Wanderer : public IEnemy
+    class Wanderer : public Enemy
     {
     public:
-        using IEnemy::IEnemy;
+        using Enemy::Enemy;
 
         EnemyType type() const override { return EnemyType::Wanderer; }
 

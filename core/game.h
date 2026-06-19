@@ -6,8 +6,8 @@
 #include <optional>
 #include <vector>
 
-#include "enemy.h"
 #include "grid.h"
+#include "ienemy.h"
 #include "igame.h"
 #include "movement.h"
 #include "rng.h"
