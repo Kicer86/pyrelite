@@ -179,3 +179,83 @@ TEST(EnemyTest, ArenaSpawnIsDeterministic)
         EXPECT_EQ(a.enemies()[i].subY, b.enemies()[i].subY);
     }
 }
+
+TEST(EnemyTest, ChaserHomesInOnThePlayer)
+{
+    // The player sits still in its (1,1) pocket; a Chaser dropped in the far corner
+    // of the open room must walk it down and catch it (a contact loss).
+    Game game = makeOpenRoom();
+    ASSERT_TRUE(game.addEnemy(3, 3, EnemyType::Chaser));
+
+    bool caught = false;
+    for (int i = 0; i < 2000 && !caught; ++i)
+    {
+        game.update(16);
+        if (game.state() == GameState::Lost)
+            caught = true;
+    }
+    EXPECT_TRUE(caught);
+}
+
+TEST(EnemyTest, ChaserClosesTheDistance)
+{
+    // Independent of the catch: each committed step should never move it further
+    // from the player, and overall it must get closer than where it started.
+    Game game = makeOpenRoom();
+    ASSERT_TRUE(game.addEnemy(3, 3, EnemyType::Chaser));
+
+    const auto dist = [&]
+    {
+        const Enemy &e = game.enemies().front();
+        return std::abs(e.subX / kSubcell - game.playerX())
+             + std::abs(e.subY / kSubcell - game.playerY());
+    };
+
+    const int start = dist();
+    int prev = start;
+    for (int i = 0; i < 50 && game.state() == GameState::Playing; ++i)
+    {
+        game.update(16);
+        EXPECT_LE(dist(), prev);
+        prev = dist();
+    }
+    EXPECT_LT(prev, start);
+}
+
+TEST(EnemyTest, ChaserRoamsWhenWalledOffFromPlayer)
+{
+    // The player is sealed in its pocket, unreachable. A Chaser must not freeze
+    // against the wall between them: it falls back to roaming its own block, and
+    // can never reach the player to end the run.
+    Game game = makeRoamRoom();
+    ASSERT_TRUE(game.addEnemy(4, 4, EnemyType::Chaser));
+
+    bool leftStart = false;
+    for (int i = 0; i < 2000; ++i)
+    {
+        game.update(16);
+        const Enemy &e = game.enemies().front();
+        if (e.subX / kSubcell != 4 || e.subY / kSubcell != 4)
+            leftStart = true;
+    }
+    EXPECT_TRUE(leftStart);
+    EXPECT_EQ(game.state(), GameState::Playing);
+}
+
+TEST(EnemyTest, ArenaSpawnsAMixOfArchetypes)
+{
+    // A generated arena seeds both hunters and roamers, so the variety actually
+    // reaches the player (not just one type by accident of the draw).
+    Game game(13, 11, 1);
+    int chasers = 0;
+    int wanderers = 0;
+    for (const Enemy &e : game.enemies())
+    {
+        if (e.type == EnemyType::Chaser)
+            ++chasers;
+        else
+            ++wanderers;
+    }
+    EXPECT_GE(chasers, 1);
+    EXPECT_GE(wanderers, 1);
+}
