@@ -46,7 +46,9 @@ namespace pyrelite
     // flame or an enemy (Lost). Both end states freeze the simulation.
     enum class GameState { Playing, Won, Lost };
 
-    enum class EnemyType { Wanderer };
+    // Wanderer roams at random (turns only when it hits a wall); Chaser greedily
+    // steps toward the player, falling back to roaming when walled off from them.
+    enum class EnemyType { Wanderer, Chaser };
 
     // A moving hazard. Like the player it lives in sub-units (kSubcell per tile)
     // and is grid-locked: it travels tile to tile, only choosing a new heading
@@ -101,10 +103,11 @@ namespace pyrelite
         bool hasPowerUpAt(int x, int y) const;
         bool hasEnemyAt(int x, int y) const;
 
-        // Place a wandering enemy centred on a walkable tile. Returns false (placing
-        // nothing) if the tile is out of bounds or not Empty. The real arena spawns
-        // enemies deterministically from the seed; this is also the test seam.
-        bool addEnemy(int tileX, int tileY);
+        // Place an enemy of the given archetype centred on a walkable tile. Returns
+        // false (placing nothing) if the tile is out of bounds or not Empty. The real
+        // arena spawns enemies deterministically from the seed; this is also the test
+        // seam, defaulting to a Wanderer.
+        bool addEnemy(int tileX, int tileY, EnemyType type = EnemyType::Wanderer);
 
         // Discrete one-tile step in dir if the target tile is walkable, snapping the
         // player onto that tile centre. Returns true if the player moved. Handy for
@@ -137,6 +140,8 @@ namespace pyrelite
         bool drainBomb();
         bool integrateMovement(int deltaMs);
         bool integrateEnemy(Enemy &enemy, int deltaMs);
+        std::optional<Direction> chooseEnemyDir(const Enemy &enemy);
+        std::optional<Direction> randomWalkableDir(int tx, int ty);
         bool resolveDeaths();
         void spawnEnemies(int count);
         int movementUnits(int deltaMs) const;

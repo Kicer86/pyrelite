@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <optional>
 #include <stdexcept>
 #include <utility>
 
@@ -25,10 +26,14 @@ namespace pyrelite
         // Enemies crawl slower than the player's base speed so they stay dodgeable.
         constexpr int kEnemySpeedUnitsPerMs = 2;
 
-        // How many wanderers a generated arena seeds, and how far (Manhattan tiles)
+        // How many enemies a generated arena seeds, and how far (Manhattan tiles)
         // they must spawn from the player pocket so the opening is never a death trap.
         constexpr int kEnemyCount = 3;
         constexpr int kEnemySpawnMinDistance = 4;
+
+        // Of those, how many are Chasers (the rest are Wanderers). One hunter against
+        // two roamers keeps the arena tense but still dodgeable; tunable balance knob.
+        constexpr int kChaserCount = 1;
 
         // Decorrelate the enemy RNG stream from the power-up one (same seed would
         // otherwise tie drops to spawns); golden-ratio offset, splitmix64-friendly.
@@ -154,20 +159,21 @@ namespace pyrelite
             && !hasBombAt(x, y);
     }
 
-    bool Game::addEnemy(int tileX, int tileY)
+    bool Game::addEnemy(int tileX, int tileY, EnemyType type)
     {
         if (!m_grid.inBounds(tileX, tileY) || m_grid.at(tileX, tileY) != Tile::Empty)
             return false;
 
         const int sx = tileX * kSubcell;
         const int sy = tileY * kSubcell;
-        m_enemies.push_back(Enemy{sx, sy, sx, sy, Direction::Down, EnemyType::Wanderer});
+        m_enemies.push_back(Enemy{sx, sy, sx, sy, Direction::Down, type});
         return true;
     }
 
-    // Deterministically seed up to count wanderers on empty tiles a safe distance
-    // from the player pocket. Candidates are gathered in row-major order, then drawn
-    // (and removed) with the enemy RNG, so the same seed always yields the same set.
+    // Deterministically seed up to count enemies on empty tiles a safe distance from
+    // the player pocket. Candidates are gathered in row-major order, then drawn (and
+    // removed) with the enemy RNG, so the same seed always yields the same set. The
+    // first kChaserCount placed are Chasers; the rest roam as Wanderers.
     void Game::spawnEnemies(int count)
     {
         const auto hasEmptyNeighbour = [this](int x, int y)
@@ -200,7 +206,9 @@ namespace pyrelite
             const std::size_t pick = m_enemyRng.below(
                 static_cast<std::uint32_t>(candidates.size()));
             const auto [x, y] = candidates[pick];
-            addEnemy(x, y);
+            const EnemyType type = placed < kChaserCount ? EnemyType::Chaser
+                                                         : EnemyType::Wanderer;
+            addEnemy(x, y, type);
             candidates[pick] = candidates.back();
             candidates.pop_back();
         }
@@ -295,44 +303,23 @@ namespace pyrelite
         return true;
     }
 
-    // Wanderer AI, grid-locked like the player: only when centred does it pick a
-    // heading — keep going straight if that tile is walkable, otherwise turn to a
-    // uniformly random walkable direction (so it bounces off walls and roams). With
-    // no way out it sits still. Then it crawls toward the committed target tile.
+    // Grid-locked like the player: only when centred does the enemy pick a new
+    // heading (per its archetype), commit to the neighbouring tile, then crawl toward
+    // it. With nowhere to go it sits still until a brick is cleared.
     bool Game::integrateEnemy(Enemy &enemy, int deltaMs)
     {
         const bool centred = enemy.subX == enemy.targetSubX
             && enemy.subY == enemy.targetSubY;
         if (centred)
         {
-            const int tx = enemy.subX / kSubcell;
-            const int ty = enemy.subY / kSubcell;
+            const std::optional<Direction> next = chooseEnemyDir(enemy);
+            if (!next)
+                return false; // boxed in
 
-            int ahead = tx;
-            int aheadY = ty;
+            enemy.dir = *next;
+            int ahead = enemy.subX / kSubcell;
+            int aheadY = enemy.subY / kSubcell;
             stepTile(enemy.dir, ahead, aheadY);
-            if (!walkable(ahead, aheadY))
-            {
-                Direction options[4];
-                int count = 0;
-                for (const Direction dir : {Direction::Up, Direction::Down,
-                         Direction::Left, Direction::Right})
-                {
-                    int nx = tx;
-                    int ny = ty;
-                    stepTile(dir, nx, ny);
-                    if (walkable(nx, ny))
-                        options[count++] = dir;
-                }
-                if (count == 0)
-                    return false; // boxed in
-
-                enemy.dir = options[m_enemyRng.below(static_cast<std::uint32_t>(count))];
-                ahead = tx;
-                aheadY = ty;
-                stepTile(enemy.dir, ahead, aheadY);
-            }
-
             enemy.targetSubX = ahead * kSubcell;
             enemy.targetSubY = aheadY * kSubcell;
         }
@@ -343,6 +330,79 @@ namespace pyrelite
         enemy.subX = approach(enemy.subX, enemy.targetSubX, v);
         enemy.subY = approach(enemy.subY, enemy.targetSubY, v);
         return enemy.subX != beforeX || enemy.subY != beforeY;
+    }
+
+    // Pick a centred enemy's next heading from its tile. A Chaser greedily steps
+    // toward the player on the axis with the larger gap, then the other axis; when
+    // both are blocked it roams to route around the obstacle. A Wanderer keeps going
+    // straight while it can, else turns somewhere random. nullopt means boxed in.
+    std::optional<Direction> Game::chooseEnemyDir(const Enemy &enemy)
+    {
+        const int tx = enemy.subX / kSubcell;
+        const int ty = enemy.subY / kSubcell;
+
+        if (enemy.type == EnemyType::Chaser)
+        {
+            const int dx = playerX() - tx;
+            const int dy = playerY() - ty;
+            const Direction horiz = dx > 0 ? Direction::Right : Direction::Left;
+            const Direction vert = dy > 0 ? Direction::Down : Direction::Up;
+
+            Direction prefs[2];
+            int n = 0;
+            if (std::abs(dx) >= std::abs(dy))
+            {
+                if (dx != 0)
+                    prefs[n++] = horiz;
+                if (dy != 0)
+                    prefs[n++] = vert;
+            }
+            else
+            {
+                if (dy != 0)
+                    prefs[n++] = vert;
+                if (dx != 0)
+                    prefs[n++] = horiz;
+            }
+
+            for (int i = 0; i < n; ++i)
+            {
+                int nx = tx;
+                int ny = ty;
+                stepTile(prefs[i], nx, ny);
+                if (walkable(nx, ny))
+                    return prefs[i];
+            }
+            return randomWalkableDir(tx, ty);
+        }
+
+        int ahead = tx;
+        int aheadY = ty;
+        stepTile(enemy.dir, ahead, aheadY);
+        if (walkable(ahead, aheadY))
+            return enemy.dir; // keep going straight
+        return randomWalkableDir(tx, ty);
+    }
+
+    // A uniformly random walkable orthogonal neighbour of (tx, ty), or nullopt when
+    // the tile is boxed in. Candidates are gathered in a fixed order before the draw,
+    // so the choice is reproducible from the enemy RNG stream.
+    std::optional<Direction> Game::randomWalkableDir(int tx, int ty)
+    {
+        Direction options[4];
+        int count = 0;
+        for (const Direction dir : {Direction::Up, Direction::Down,
+                 Direction::Left, Direction::Right})
+        {
+            int nx = tx;
+            int ny = ty;
+            stepTile(dir, nx, ny);
+            if (walkable(nx, ny))
+                options[count++] = dir;
+        }
+        if (count == 0)
+            return std::nullopt;
+        return options[m_enemyRng.below(static_cast<std::uint32_t>(count))];
     }
 
     // Settle the consequences of this tick's positions and flames. Enemies standing
