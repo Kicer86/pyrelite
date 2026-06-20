@@ -8,8 +8,11 @@
 
 namespace
 {
-    constexpr int kColumns = 13;
-    constexpr int kRows = 11;
+    // Larger than one screen on purpose: the view no longer fits the whole board
+    // to the window, it scrolls a fixed-size grid (see Main.qml camera). Odd dims
+    // keep the classic border-wall + even/even pillar lattice symmetric.
+    constexpr int kColumns = 31;
+    constexpr int kRows = 25;
     constexpr std::uint64_t kSeed = 1; // fixed for now; run seeds come later
     constexpr int kStepMs = 16;        // ~60 Hz simulation quantum
     constexpr double kMaxFrameMs = 250; // cap catch-up after the render loop stalls
