@@ -63,4 +63,56 @@ namespace pyrelite
     {
         return (sub + kSubcell / 2) / kSubcell;
     }
+
+    // The sub-cell bookkeeping every grid-locked mover shares (the player and the
+    // enemies alike): a current sub-position and the tile centre it is travelling
+    // toward. Each owner decides WHERE to head when centred and how fast to crawl;
+    // this just holds the position, steps it, and reports the occupied tile — the
+    // common half both movers used to re-implement.
+    struct GridMover
+    {
+        int subX;
+        int subY;
+        int targetSubX;
+        int targetSubY;
+
+        GridMover(int tileX, int tileY)
+            : subX(tileX * kSubcell)
+            , subY(tileY * kSubcell)
+            , targetSubX(tileX * kSubcell)
+            , targetSubY(tileY * kSubcell)
+        {
+        }
+
+        // Centred on a tile, i.e. no step in progress, so a new heading may be chosen.
+        bool centred() const { return subX == targetSubX && subY == targetSubY; }
+
+        int tileX() const { return tileOf(subX); }
+        int tileY() const { return tileOf(subY); }
+
+        // Aim the next step at the centre of tile (tx, ty).
+        void aimAt(int tx, int ty)
+        {
+            targetSubX = tx * kSubcell;
+            targetSubY = ty * kSubcell;
+        }
+
+        // Teleport onto tile (tx, ty), cancelling any step in progress.
+        void snapTo(int tx, int ty)
+        {
+            subX = targetSubX = tx * kSubcell;
+            subY = targetSubY = ty * kSubcell;
+        }
+
+        // Crawl toward the target by up to maxStep sub-units on each axis; returns
+        // whether the position actually changed.
+        bool advance(int maxStep)
+        {
+            const int beforeX = subX;
+            const int beforeY = subY;
+            subX = approach(subX, targetSubX, maxStep);
+            subY = approach(subY, targetSubY, maxStep);
+            return subX != beforeX || subY != beforeY;
+        }
+    };
 } // namespace pyrelite

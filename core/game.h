@@ -60,12 +60,12 @@ namespace pyrelite
         GameState state() const { return m_state; }
 
         // Player position in sub-units (kSubcell per tile) for smooth rendering...
-        int playerSubX() const { return m_playerSubX; }
-        int playerSubY() const { return m_playerSubY; }
+        int playerSubX() const { return m_player.subX; }
+        int playerSubY() const { return m_player.subY; }
         // ...and as the tile it currently occupies (nearest centre), used for bomb
         // placement, pick-ups and collision.
-        int playerX() const override { return (m_playerSubX + kSubcell / 2) / kSubcell; }
-        int playerY() const override { return (m_playerSubY + kSubcell / 2) / kSubcell; }
+        int playerX() const override { return m_player.tileX(); }
+        int playerY() const override { return m_player.tileY(); }
 
         const std::vector<Bomb> &bombs() const { return m_bombs; }
         const std::vector<Explosion> &explosions() const { return m_explosions; }
@@ -136,10 +136,7 @@ namespace pyrelite
         void applyPowerUp(PowerUpType type);
 
         Grid m_grid;
-        int m_playerSubX;
-        int m_playerSubY;
-        int m_targetSubX;
-        int m_targetSubY;
+        GridMover m_player;
         std::vector<Bomb> m_bombs;
         std::vector<Explosion> m_explosions;
         std::vector<PowerUp> m_powerUps;

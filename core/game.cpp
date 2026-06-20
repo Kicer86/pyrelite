@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <iterator>
 #include <optional>
 #include <stdexcept>
 #include <utility>
@@ -41,17 +42,40 @@ namespace pyrelite
         // otherwise tie drops to spawns); golden-ratio offset, splitmix64-friendly.
         constexpr std::uint64_t kEnemySeedOffset = 0x9E3779B97F4A7C15ULL;
 
+        // Every kind a brick can drop, in one place. randomPowerUpType draws
+        // uniformly from this list, so a new power-up is added here (and to the
+        // PowerUpType enum) with no magic count or parallel switch to keep in sync.
+        constexpr PowerUpType kPowerUpTypes[] = {
+            PowerUpType::BombLimit,
+            PowerUpType::BombRange,
+            PowerUpType::Speed,
+        };
+
         PowerUpType randomPowerUpType(Rng &rng)
         {
-            switch (rng.below(3))
-            {
-            case 0:
-                return PowerUpType::BombLimit;
-            case 1:
-                return PowerUpType::BombRange;
-            default:
-                return PowerUpType::Speed;
-            }
+            return kPowerUpTypes[rng.below(
+                static_cast<std::uint32_t>(std::size(kPowerUpTypes)))];
+        }
+
+        // The archetype for the placed-th spawned enemy. The quota is filled in a
+        // fixed order — Chaser, Bouncer, Hunter, Ghost — and any slots beyond it roam
+        // as Wanderers. The cutoffs are the running totals of the quota.
+        EnemyType enemyTypeForSlot(int placed)
+        {
+            const int chaserCutoff = kChaserCount;
+            const int bouncerCutoff = chaserCutoff + kBouncerCount;
+            const int hunterCutoff = bouncerCutoff + kHunterCount;
+            const int ghostCutoff = hunterCutoff + kGhostCount;
+
+            if (placed < chaserCutoff)
+                return EnemyType::Chaser;
+            if (placed < bouncerCutoff)
+                return EnemyType::Bouncer;
+            if (placed < hunterCutoff)
+                return EnemyType::Hunter;
+            if (placed < ghostCutoff)
+                return EnemyType::Ghost;
+            return EnemyType::Wanderer;
         }
     }
 
@@ -62,10 +86,7 @@ namespace pyrelite
 
     Game::Game(Grid grid, std::uint64_t seed)
         : m_grid(std::move(grid))
-        , m_playerSubX(kSubcell)
-        , m_playerSubY(kSubcell)
-        , m_targetSubX(kSubcell)
-        , m_targetSubY(kSubcell)
+        , m_player(1, 1)
         , m_powerUpRng(seed)
         , m_enemyRng(seed + kEnemySeedOffset)
     {
@@ -177,15 +198,7 @@ namespace pyrelite
             const std::size_t pick = m_enemyRng.below(
                 static_cast<std::uint32_t>(candidates.size()));
             const auto [x, y] = candidates[pick];
-            const int hunterCutoff = kChaserCount + kBouncerCount + kHunterCount;
-            const int ghostCutoff = hunterCutoff + kGhostCount;
-            const EnemyType type =
-                placed < kChaserCount ? EnemyType::Chaser
-                : placed < kChaserCount + kBouncerCount ? EnemyType::Bouncer
-                : placed < hunterCutoff ? EnemyType::Hunter
-                : placed < ghostCutoff ? EnemyType::Ghost
-                : EnemyType::Wanderer;
-            addEnemy(x, y, type);
+            addEnemy(x, y, enemyTypeForSlot(placed));
             candidates[pick] = candidates.back();
             candidates.pop_back();
         }
@@ -200,8 +213,7 @@ namespace pyrelite
         if (!walkable(tx, ty))
             return false;
 
-        m_playerSubX = m_targetSubX = tx * kSubcell;
-        m_playerSubY = m_targetSubY = ty * kSubcell;
+        m_player.snapTo(tx, ty);
         collectPowerUpAtPlayer();
         return true;
     }
@@ -251,29 +263,21 @@ namespace pyrelite
     // held direction and, if the next tile is walkable, commit to the next step.
     bool Game::integrateMovement(int deltaMs)
     {
-        const bool centred = m_playerSubX == m_targetSubX && m_playerSubY == m_targetSubY;
-        if (centred)
+        if (m_player.centred())
         {
             if (!m_heldDir)
                 return false;
 
-            int tx = m_playerSubX / kSubcell;
-            int ty = m_playerSubY / kSubcell;
+            int tx = m_player.tileX();
+            int ty = m_player.tileY();
             stepTile(*m_heldDir, tx, ty);
             if (!walkable(tx, ty))
                 return false; // blocked against a wall/brick/bomb; stay centred
 
-            m_targetSubX = tx * kSubcell;
-            m_targetSubY = ty * kSubcell;
+            m_player.aimAt(tx, ty);
         }
 
-        const int v = movementUnits(deltaMs);
-        const int beforeX = m_playerSubX;
-        const int beforeY = m_playerSubY;
-        m_playerSubX = approach(m_playerSubX, m_targetSubX, v);
-        m_playerSubY = approach(m_playerSubY, m_targetSubY, v);
-
-        if (m_playerSubX == beforeX && m_playerSubY == beforeY)
+        if (!m_player.advance(movementUnits(deltaMs)))
             return false;
 
         collectPowerUpAtPlayer();
