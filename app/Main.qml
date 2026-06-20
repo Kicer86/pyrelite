@@ -15,8 +15,21 @@ Window {
 
     BoardModel { id: board }
 
-    readonly property real cell: Math.floor(Math.min(width / board.columns,
-                                                      height / board.rows))
+    // Fixed tile size in pixels so an arena can be larger than the window; the
+    // camera (boardView below) scrolls to keep the player in view, rather than
+    // shrinking the whole board to fit one screen.
+    readonly property real cell: 48
+
+    // Camera offset for one axis: keep the player centred in the viewport, but
+    // never scroll past the arena edge (clamp to [viewport - content, 0]). If the
+    // board is smaller than the viewport on this axis, centre it instead. Driven by
+    // the player's fractional tile position, so the follow is as smooth as movement.
+    function cameraOffset(viewport, content, playerTile) {
+        if (content <= viewport)
+            return (viewport - content) / 2
+        const centred = viewport / 2 - (playerTile + 0.5) * cell
+        return Math.max(viewport - content, Math.min(0, centred))
+    }
 
     // Drives bomb fuses + explosions in the core, once per rendered frame.
     // FrameAnimation is tied to the render loop (requestAnimationFrame on web),
@@ -68,7 +81,11 @@ Window {
             id: boardView
             width: board.columns * root.cell
             height: board.rows * root.cell
-            anchors.centerIn: parent
+
+            // Camera follow: re-evaluates as the player moves (playerX/Y notify),
+            // clamped so the view never scrolls past the arena border.
+            x: root.cameraOffset(scene.width, width, board.playerX)
+            y: root.cameraOffset(scene.height, height, board.playerY)
 
             Grid {
                 anchors.fill: parent
