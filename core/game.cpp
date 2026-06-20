@@ -5,6 +5,8 @@
 #include <cstdlib>
 #include <iterator>
 #include <optional>
+#include <queue>
+#include <set>
 #include <stdexcept>
 #include <utility>
 
@@ -46,20 +48,20 @@ namespace pyrelite
         // shows is decorrelated from spawns and drops yet still seed-deterministic.
         constexpr std::uint64_t kPerkSeedOffset = 0xD1B54A32D192ED03ULL;
 
-        // In-run progression knobs (M3). XP banks per enemy killed and per brick
-        // cleared; advancing a level costs kXpBase, rising kXpStep each level (L1->2 =
-        // base, L2->3 = base + step, ...). A level-up offers kPerkChoiceCount perks.
-        // All tunable balance.
+        // In-run progression knobs (M3). XP comes from kills only — clearing bricks is
+        // already rewarded with power-ups, and a kill-only source means every level-up
+        // has a fallen enemy to drop its reward from. Advancing a level costs kXpBase,
+        // rising kXpStep each level (L1->2 = base, L2->3 = base + step, ...). A level-up
+        // drops a cluster of kPerkChoiceCount perks. All tunable balance.
         constexpr int kXpPerKill = 10;
-        constexpr int kXpPerBrick = 1;
         constexpr int kXpBase = 10;
         constexpr int kXpStep = 5;
         constexpr int kPerkChoiceCount = 3;
 
-        // Every perk a level-up can offer, in one place (like kPowerUpTypes). offerPerks
-        // draws a distinct subset of size kPerkChoiceCount; today the catalog holds
-        // exactly that many, so all appear — adding a perk here (and to PerkType) turns
-        // the offer into a real random subset with no other change.
+        // Every perk a level-up can drop, in one place (like kPowerUpTypes). A cluster
+        // is a distinct subset of size kPerkChoiceCount; today the catalog holds exactly
+        // that many, so all appear — adding a perk here (and to PerkType) turns the drop
+        // into a real random subset with no other change.
         constexpr PerkType kPerkCatalog[] = {
             PerkType::ExtraBomb,
             PerkType::BiggerBlast,
@@ -240,6 +242,7 @@ namespace pyrelite
 
         m_player.snapTo(tx, ty);
         collectPowerUpAtPlayer();
+        collectPerkCrystalAtPlayer();
         return true;
     }
 
@@ -306,6 +309,7 @@ namespace pyrelite
             return false;
 
         collectPowerUpAtPlayer();
+        collectPerkCrystalAtPlayer();
         return true;
     }
 
@@ -315,6 +319,18 @@ namespace pyrelite
     // enemy wins. Returns true if the outcome changed (a death or a state change).
     bool Game::resolveDeaths()
     {
+        // Remember a tile where an enemy fell, so a resulting level-up can drop its
+        // perk cluster there (the kill the player just made, made visible as loot).
+        std::optional<std::pair<int, int>> killTile;
+        for (const auto &enemy : m_enemies)
+        {
+            if (hasExplosionAt(enemy->tileX(), enemy->tileY()))
+            {
+                killTile = std::pair{enemy->tileX(), enemy->tileY()};
+                break;
+            }
+        }
+
         const std::size_t before = m_enemies.size();
         std::erase_if(m_enemies,
             [this](const std::unique_ptr<IEnemy> &enemy)
@@ -323,7 +339,10 @@ namespace pyrelite
             });
         const std::size_t killed = before - m_enemies.size();
         if (killed > 0)
+        {
             awardXp(static_cast<int>(killed) * kXpPerKill);
+            m_lastKillTile = killTile;
+        }
         const bool killedEnemy = killed > 0;
 
         const int px = playerX();
@@ -413,7 +432,6 @@ namespace pyrelite
                 {
                     m_grid.set(x, y, Tile::Empty);
                     dropPowerUp(x, y);
-                    awardXp(kXpPerBrick);
                     break;
                 }
             }
@@ -443,40 +461,106 @@ namespace pyrelite
         m_xp += amount;
     }
 
-    // After the simulation settles, bank a pending level-up: if enough XP is in hand
-    // and the run is still live, open a fresh perk offer and freeze play in LevelUp
-    // until the player picks. Won/Lost take priority (this is a no-op unless Playing),
-    // and only one offer is open at a time. Returns true if a level-up was opened, so
-    // update() can report the change. Further banked levels are spent in choosePerk.
+    // After the simulation settles, spend one banked level: if enough XP is in hand,
+    // the run is live, and no cluster is still waiting to be claimed, level up and drop
+    // a fresh perk cluster. Only one cluster is out at a time, so a multi-kill tick that
+    // banks several levels pays out one claim after another. Won/Lost take priority (a
+    // clearing kill ends the arena rather than dropping loot). Returns true on a level.
     bool Game::checkLevelUp()
     {
         if (m_state != GameState::Playing)
             return false;
+        if (!m_perkCrystals.empty())
+            return false;
         if (m_xp < xpToNextLevel())
             return false;
 
-        offerPerks();
-        m_state = GameState::LevelUp;
+        m_xp -= xpToNextLevel();
+        ++m_level;
+
+        // Drop where the levelling kill fell (consumed once); a further banked level,
+        // claimed later with no fresh kill, clusters around the player instead.
+        const auto [ox, oy] = m_lastKillTile.value_or(
+            std::pair{playerX(), playerY()});
+        m_lastKillTile.reset();
+        dropPerkCluster(ox, oy);
         return true;
     }
 
-    // Draw kPerkChoiceCount distinct perks from the catalog (capped at its size) with
-    // the perk RNG, then order them canonically so a fully-offered catalog keeps each
-    // card in a stable slot. Deterministic for a seed.
-    void Game::offerPerks()
+    // Lay a cluster of kPerkChoiceCount distinct perks as floor pickups, spreading out
+    // from the origin over open tiles (BFS; walls block; the player's own tile and any
+    // occupied tile are skipped) so even a cramped kill scatters them somewhere
+    // reachable. Fewer open tiles than perks (a boxed-in kill) simply drops fewer.
+    void Game::dropPerkCluster(int originX, int originY)
     {
-        m_perkChoices.clear();
+        // Draw the distinct perks, ordered canonically for stable presentation.
         std::vector<PerkType> pool(std::begin(kPerkCatalog), std::end(kPerkCatalog));
-        const int count = std::min<int>(kPerkChoiceCount, static_cast<int>(pool.size()));
-        for (int i = 0; i < count; ++i)
+        const int wanted = std::min<int>(kPerkChoiceCount, static_cast<int>(pool.size()));
+        std::vector<PerkType> perks;
+        for (int i = 0; i < wanted; ++i)
         {
             const std::size_t pick = m_perkRng.below(
                 static_cast<std::uint32_t>(pool.size()));
-            m_perkChoices.push_back(pool[pick]);
+            perks.push_back(pool[pick]);
             pool[pick] = pool.back();
             pool.pop_back();
         }
-        std::sort(m_perkChoices.begin(), m_perkChoices.end());
+        std::sort(perks.begin(), perks.end());
+
+        // Gather up to perks.size() landing tiles, nearest first, by BFS over open floor.
+        const auto canLand = [this](int x, int y)
+        {
+            return m_grid.inBounds(x, y) && m_grid.at(x, y) == Tile::Empty
+                && !(x == playerX() && y == playerY())
+                && !hasBombAt(x, y) && !hasPowerUpAt(x, y);
+        };
+
+        constexpr int dx[4] = {0, 0, -1, 1};
+        constexpr int dy[4] = {-1, 1, 0, 0};
+        std::vector<std::pair<int, int>> tiles;
+        std::set<std::pair<int, int>> seen{{originX, originY}};
+        std::queue<std::pair<int, int>> frontier;
+        frontier.push({originX, originY});
+        while (!frontier.empty() && tiles.size() < perks.size())
+        {
+            const auto [x, y] = frontier.front();
+            frontier.pop();
+            if (canLand(x, y))
+                tiles.emplace_back(x, y);
+            for (int d = 0; d < 4; ++d)
+            {
+                const int nx = x + dx[d];
+                const int ny = y + dy[d];
+                if (m_grid.inBounds(nx, ny) && m_grid.at(nx, ny) == Tile::Empty
+                    && seen.insert({nx, ny}).second)
+                    frontier.push({nx, ny});
+            }
+        }
+
+        m_perkCrystals.clear();
+        const std::size_t count = std::min(tiles.size(), perks.size());
+        for (std::size_t i = 0; i < count; ++i)
+            m_perkCrystals.push_back(
+                PerkCrystal{tiles[i].first, tiles[i].second, perks[i]});
+    }
+
+    void Game::collectPerkCrystalAtPlayer()
+    {
+        if (m_perkCrystals.empty())
+            return;
+
+        const int tx = playerX();
+        const int ty = playerY();
+        const auto it = std::find_if(m_perkCrystals.begin(), m_perkCrystals.end(),
+            [tx, ty](const PerkCrystal &crystal)
+            {
+                return crystal.x == tx && crystal.y == ty;
+            });
+        if (it == m_perkCrystals.end())
+            return;
+
+        applyPerk(it->type);
+        m_perkCrystals.clear(); // claiming one dismisses the rest of the cluster
     }
 
     void Game::applyPerk(PerkType perk)
@@ -493,26 +577,6 @@ namespace pyrelite
             ++m_playerSpeed;
             break;
         }
-    }
-
-    bool Game::choosePerk(int index)
-    {
-        if (m_state != GameState::LevelUp)
-            return false;
-        if (index < 0 || index >= static_cast<int>(m_perkChoices.size()))
-            return false;
-
-        applyPerk(m_perkChoices[index]);
-        m_xp -= xpToNextLevel();
-        ++m_level;
-        m_perkChoices.clear();
-
-        // Spend any further banked levels with their own offers; otherwise play resumes.
-        if (m_xp >= xpToNextLevel())
-            offerPerks();
-        else
-            m_state = GameState::Playing;
-        return true;
     }
 
     bool Game::update(int deltaMs)

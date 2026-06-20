@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <utility>
 #include <vector>
 
 #include "grid.h"
@@ -38,16 +39,27 @@ namespace pyrelite
         PowerUpType type;
     };
 
-    // An in-run upgrade picked on level-up (M3 progression). Distinct from a PowerUp:
-    // perks are chosen from an offered set, power-ups are walked over. Their effects
-    // may overlap (both can raise a stat) but the two systems stay separate.
+    // An in-run upgrade earned on level-up (M3 progression). Distinct from a PowerUp:
+    // power-ups drop at random from bricks and apply on contact; perks are the reward
+    // for killing enemies and arrive as a choose-one cluster (see PerkCrystal). Their
+    // effects can overlap today, but the agency differs — a perk you pick, a power-up
+    // you happen upon.
     enum class PerkType { ExtraBomb, BiggerBlast, SwiftFeet };
 
+    // One crystal of the cluster dropped on level-up. The player walks onto one to
+    // claim its perk; the rest of the cluster then vanishes — a choose-1-of-N made by
+    // movement under pressure, with no pause. Static (tile coords), like a PowerUp.
+    struct PerkCrystal
+    {
+        int x;
+        int y;
+        PerkType type;
+    };
+
     // Playing until the player either clears every enemy (Won) or is caught by a flame
-    // or an enemy (Lost). LevelUp freezes the simulation the same way while the player
-    // picks one of the offered perks; Won and Lost end the run. All three non-Playing
-    // states halt update().
-    enum class GameState { Playing, Won, Lost, LevelUp };
+    // or an enemy (Lost). Both end states freeze the simulation. Levelling up never
+    // does — the run is not interrupted; the reward drops onto the floor instead.
+    enum class GameState { Playing, Won, Lost };
 
     // Central game state: the arena grid, the player, active bombs, and live
     // explosion flames. Implements IGame so enemy AI sees only the slice it needs.
@@ -66,19 +78,17 @@ namespace pyrelite
 
         GameState state() const { return m_state; }
 
-        // In-run progression (M3): experience banked this run, the current level (from
-        // 1), and the XP needed to advance from it to the next. Each enemy killed and
-        // each brick cleared grants XP; crossing the threshold enters LevelUp with a
-        // perk offer.
+        // In-run progression (M3): experience earned this run, the current level (from
+        // 1), and the XP needed to advance from it to the next. Killing an enemy grants
+        // XP; crossing the threshold levels up and drops a perk cluster (perkCrystals)
+        // for the player to pick from — the run never pauses.
         int xp() const { return m_xp; }
         int level() const { return m_level; }
         int xpToNextLevel() const;
 
-        // The perks offered for a pending level-up; empty unless state() is LevelUp.
-        // choosePerk applies the one at index and resumes play (or, if more levels are
-        // banked, opens the next offer). Out-of-range or off-LevelUp calls do nothing.
-        const std::vector<PerkType> &perkChoices() const { return m_perkChoices; }
-        bool choosePerk(int index);
+        // The perk cluster currently lying on the floor (empty when none is pending).
+        // Walking onto any one of them claims its perk and clears the rest.
+        const std::vector<PerkCrystal> &perkCrystals() const { return m_perkCrystals; }
 
         // Player position in sub-units (kSubcell per tile) for smooth rendering...
         int playerSubX() const { return m_player.subX; }
@@ -157,7 +167,8 @@ namespace pyrelite
         void applyPowerUp(PowerUpType type);
         void awardXp(int amount);
         bool checkLevelUp();
-        void offerPerks();
+        void dropPerkCluster(int originX, int originY);
+        void collectPerkCrystalAtPlayer();
         void applyPerk(PerkType perk);
 
         Grid m_grid;
@@ -171,7 +182,8 @@ namespace pyrelite
         int m_playerSpeed = 1;
         int m_xp = 0;
         int m_level = 1;
-        std::vector<PerkType> m_perkChoices;
+        std::vector<PerkCrystal> m_perkCrystals;
+        std::optional<std::pair<int, int>> m_lastKillTile;
         Rng m_powerUpRng;
         Rng m_enemyRng;
         Rng m_perkRng;
