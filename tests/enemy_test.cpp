@@ -69,6 +69,24 @@ Game makeUMaze()
     return Game(g);
 }
 
+// A solid-walled 5x5 split down the middle by a column of BRICKS: the player pocket on
+// the left, the enemy block on the right, joined only through the destructible bricks.
+// A normal enemy is sealed off; a Ghost phases across. Player at (1,1), enemy at (3,3).
+Game makeBrickSplitRoom()
+{
+    Grid g(5, 5);
+    for (int y = 0; y < 5; ++y)
+        for (int x = 0; x < 5; ++x)
+            g.set(x, y, Tile::Wall);
+    for (int y = 1; y <= 3; ++y)
+    {
+        g.set(1, y, Tile::Empty); // player's left column
+        g.set(2, y, Tile::Brick); // the brick divider
+        g.set(3, y, Tile::Empty); // enemy's right column
+    }
+    return Game(g);
+}
+
 } // namespace
 
 TEST(EnemyTest, AddEnemyPlacesAtTileCentre)
@@ -320,6 +338,38 @@ TEST(EnemyTest, GreedyChaserStallsInTheMazeTheHunterSolves)
     EXPECT_EQ(game.state(), GameState::Playing); // never caught the player
 }
 
+TEST(EnemyTest, GhostPhasesThroughBricksToCatchThePlayer)
+{
+    // The only route between the blocks is through the brick divider, which a Ghost
+    // ignores: it crosses and runs the player down (a contact loss).
+    Game game = makeBrickSplitRoom();
+    ASSERT_TRUE(game.addEnemy(3, 3, EnemyType::Ghost));
+
+    bool caught = false;
+    for (int i = 0; i < 4000 && !caught; ++i)
+    {
+        game.update(16);
+        if (game.state() == GameState::Lost)
+            caught = true;
+    }
+    EXPECT_TRUE(caught);
+}
+
+TEST(EnemyTest, ChaserCannotCrossTheBrickWallTheGhostPhasesThrough)
+{
+    // The same divider seals a normal Chaser out: bricks are not walkable, the blocks
+    // are otherwise solid-walled, so it never reaches the player. The contrast is the
+    // Ghost's whole point — and the bricks stay intact (nothing destroyed them).
+    Game game = makeBrickSplitRoom();
+    ASSERT_TRUE(game.addEnemy(3, 3, EnemyType::Chaser));
+
+    for (int i = 0; i < 4000; ++i)
+        game.update(16);
+
+    EXPECT_EQ(game.state(), GameState::Playing); // never crossed to the player
+    EXPECT_EQ(game.grid().at(2, 2), Tile::Brick); // divider untouched
+}
+
 TEST(EnemyTest, ArenaSpawnsAMixOfArchetypes)
 {
     // A generated arena seeds every archetype, so the variety actually reaches the
@@ -328,6 +378,7 @@ TEST(EnemyTest, ArenaSpawnsAMixOfArchetypes)
     int chasers = 0;
     int bouncers = 0;
     int hunters = 0;
+    int ghosts = 0;
     int wanderers = 0;
     for (const auto &e : game.enemies())
     {
@@ -342,6 +393,9 @@ TEST(EnemyTest, ArenaSpawnsAMixOfArchetypes)
         case EnemyType::Hunter:
             ++hunters;
             break;
+        case EnemyType::Ghost:
+            ++ghosts;
+            break;
         case EnemyType::Wanderer:
             ++wanderers;
             break;
@@ -350,5 +404,6 @@ TEST(EnemyTest, ArenaSpawnsAMixOfArchetypes)
     EXPECT_GE(chasers, 1);
     EXPECT_GE(bouncers, 1);
     EXPECT_GE(hunters, 1);
+    EXPECT_GE(ghosts, 1);
     EXPECT_GE(wanderers, 1);
 }

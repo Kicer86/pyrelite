@@ -5,6 +5,7 @@
 
 #include "bouncer.h"
 #include "chaser.h"
+#include "ghost.h"
 #include "hunter.h"
 #include "igame.h"
 #include "irng.h"
@@ -29,9 +30,14 @@ public:
     FakeWorld(int playerTileX, int playerTileY)
         : m_px(playerTileX), m_py(playerTileY) {}
 
-    void block(int x, int y) { m_blocked.emplace(x, y); }
+    void block(int x, int y) { m_blocked.emplace(x, y); } // a solid wall (stops everyone)
+    void brick(int x, int y) { m_bricks.emplace(x, y); }  // soft (only a Ghost passes)
 
     bool walkable(int x, int y) const override
+    {
+        return !m_blocked.contains({x, y}) && !m_bricks.contains({x, y});
+    }
+    bool walkableThroughBricks(int x, int y) const override
     {
         return !m_blocked.contains({x, y});
     }
@@ -42,6 +48,7 @@ private:
     int m_px;
     int m_py;
     std::set<std::pair<int, int>> m_blocked;
+    std::set<std::pair<int, int>> m_bricks;
 };
 
 // An IRng that replays a fixed list of below() results and counts every draw, so a
@@ -219,4 +226,37 @@ TEST(EnemyAiTest, HunterRoamsWhenNoPathToThePlayerExists)
     EXPECT_EQ(h.tileX(), 1);       // confined to the pocket
     EXPECT_LE(h.tileY(), 2);       // never reached the walled-off player at y = 10
     EXPECT_GT(rng.calls(), 0);     // with no route it falls back to roaming (RNG)
+}
+
+TEST(EnemyAiTest, GhostChasesStraightThroughBricks)
+{
+    FakeWorld world(5, 1);  // player to the right on the same row
+    for (int x = 1; x <= 4; ++x)
+        world.brick(x, 1);  // a solid run of bricks straddling the direct line
+    ScriptedRng rng;
+    Ghost g(0, 1);
+
+    bool reached = false;
+    for (int i = 0; i < 2000 && !reached; ++i)
+    {
+        g.integrate(world, rng, 16);
+        if (g.tileX() == 5 && g.tileY() == 1)
+            reached = true;
+    }
+    EXPECT_TRUE(reached);    // phased straight through the bricks to the player
+    EXPECT_EQ(g.tileY(), 1); // never had to detour off the row
+}
+
+TEST(EnemyAiTest, GhostIsStillStoppedBySolidWalls)
+{
+    FakeWorld world(5, 1);
+    world.block(1, 1); // a SOLID wall on the direct line — bricks pass, walls do not
+    ScriptedRng rng;
+    Ghost g(0, 1);
+
+    for (int i = 0; i < 400; ++i)
+    {
+        g.integrate(world, rng, 16);
+        EXPECT_FALSE(g.tileX() == 1 && g.tileY() == 1) << "a Ghost entered a solid wall";
+    }
 }
