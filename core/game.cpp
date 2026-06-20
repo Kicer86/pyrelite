@@ -29,9 +29,11 @@ namespace pyrelite
         constexpr int kEnemyCount = 3;
         constexpr int kEnemySpawnMinDistance = 4;
 
-        // Of those, how many are Chasers (the rest are Wanderers). One hunter against
-        // two roamers keeps the arena tense but still dodgeable; tunable balance knob.
+        // Of those, how many are Chasers and how many Bouncers (the rest are
+        // Wanderers). One hunter, one ricocheting bouncer and one roamer keeps the
+        // arena varied but still dodgeable; tunable balance knobs.
         constexpr int kChaserCount = 1;
+        constexpr int kBouncerCount = 1;
 
         // Decorrelate the enemy RNG stream from the power-up one (same seed would
         // otherwise tie drops to spawns); golden-ratio offset, splitmix64-friendly.
@@ -133,7 +135,8 @@ namespace pyrelite
     // Deterministically seed up to count enemies on empty tiles a safe distance from
     // the player pocket. Candidates are gathered in row-major order, then drawn (and
     // removed) with the enemy RNG, so the same seed always yields the same set. The
-    // first kChaserCount placed are Chasers; the rest roam as Wanderers.
+    // first kChaserCount placed are Chasers, the next kBouncerCount Bouncers; the rest
+    // roam as Wanderers.
     void Game::spawnEnemies(int count)
     {
         const auto hasEmptyNeighbour = [this](int x, int y)
@@ -166,8 +169,10 @@ namespace pyrelite
             const std::size_t pick = m_enemyRng.below(
                 static_cast<std::uint32_t>(candidates.size()));
             const auto [x, y] = candidates[pick];
-            const EnemyType type = placed < kChaserCount ? EnemyType::Chaser
-                                                         : EnemyType::Wanderer;
+            const EnemyType type =
+                placed < kChaserCount ? EnemyType::Chaser
+                : placed < kChaserCount + kBouncerCount ? EnemyType::Bouncer
+                : EnemyType::Wanderer;
             addEnemy(x, y, type);
             candidates[pick] = candidates.back();
             candidates.pop_back();
