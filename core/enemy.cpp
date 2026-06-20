@@ -18,36 +18,26 @@ namespace pyrelite
     }
 
     Enemy::Enemy(int tileX, int tileY)
-        : m_subX(tileX * kSubcell)
-        , m_subY(tileY * kSubcell)
-        , m_targetSubX(tileX * kSubcell)
-        , m_targetSubY(tileY * kSubcell)
+        : m_mover(tileX, tileY)
     {
     }
 
     bool Enemy::integrate(const IGame &game, IRng &rng, int deltaMs)
     {
-        const bool centred = m_subX == m_targetSubX && m_subY == m_targetSubY;
-        if (centred)
+        if (m_mover.centred())
         {
             const std::optional<Direction> next = chooseDirection(game, rng);
             if (!next)
                 return false; // boxed in
 
             m_dir = *next;
-            int ahead = tileX();
-            int aheadY = tileY();
+            int ahead = m_mover.tileX();
+            int aheadY = m_mover.tileY();
             stepTile(m_dir, ahead, aheadY);
-            m_targetSubX = ahead * kSubcell;
-            m_targetSubY = aheadY * kSubcell;
+            m_mover.aimAt(ahead, aheadY);
         }
 
-        const int v = kEnemySpeedUnitsPerMs * deltaMs;
-        const int beforeX = m_subX;
-        const int beforeY = m_subY;
-        m_subX = approach(m_subX, m_targetSubX, v);
-        m_subY = approach(m_subY, m_targetSubY, v);
-        return m_subX != beforeX || m_subY != beforeY;
+        return m_mover.advance(kEnemySpeedUnitsPerMs * deltaMs);
     }
 
     bool Enemy::canEnter(const IGame &game, int x, int y) const

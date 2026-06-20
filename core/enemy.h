@@ -19,10 +19,10 @@ namespace pyrelite
     public:
         Enemy(int tileX, int tileY);
 
-        int subX() const override { return m_subX; }
-        int subY() const override { return m_subY; }
-        int tileX() const override { return tileOf(m_subX); }
-        int tileY() const override { return tileOf(m_subY); }
+        int subX() const override { return m_mover.subX; }
+        int subY() const override { return m_mover.subY; }
+        int tileX() const override { return m_mover.tileX(); }
+        int tileY() const override { return m_mover.tileY(); }
 
         // When centred, pick a new heading (per archetype) and commit to that
         // neighbouring tile, then crawl toward it. With nowhere to go it sits still.
@@ -46,10 +46,7 @@ namespace pyrelite
         std::optional<Direction> randomWalkableDir(const IGame &game, IRng &rng) const;
 
     private:
-        int m_subX;
-        int m_subY;
-        int m_targetSubX;
-        int m_targetSubY;
+        GridMover m_mover;
         Direction m_dir = Direction::Down;
     };
 } // namespace pyrelite

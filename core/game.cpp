@@ -86,10 +86,7 @@ namespace pyrelite
 
     Game::Game(Grid grid, std::uint64_t seed)
         : m_grid(std::move(grid))
-        , m_playerSubX(kSubcell)
-        , m_playerSubY(kSubcell)
-        , m_targetSubX(kSubcell)
-        , m_targetSubY(kSubcell)
+        , m_player(1, 1)
         , m_powerUpRng(seed)
         , m_enemyRng(seed + kEnemySeedOffset)
     {
@@ -216,8 +213,7 @@ namespace pyrelite
         if (!walkable(tx, ty))
             return false;
 
-        m_playerSubX = m_targetSubX = tx * kSubcell;
-        m_playerSubY = m_targetSubY = ty * kSubcell;
+        m_player.snapTo(tx, ty);
         collectPowerUpAtPlayer();
         return true;
     }
@@ -267,29 +263,21 @@ namespace pyrelite
     // held direction and, if the next tile is walkable, commit to the next step.
     bool Game::integrateMovement(int deltaMs)
     {
-        const bool centred = m_playerSubX == m_targetSubX && m_playerSubY == m_targetSubY;
-        if (centred)
+        if (m_player.centred())
         {
             if (!m_heldDir)
                 return false;
 
-            int tx = m_playerSubX / kSubcell;
-            int ty = m_playerSubY / kSubcell;
+            int tx = m_player.tileX();
+            int ty = m_player.tileY();
             stepTile(*m_heldDir, tx, ty);
             if (!walkable(tx, ty))
                 return false; // blocked against a wall/brick/bomb; stay centred
 
-            m_targetSubX = tx * kSubcell;
-            m_targetSubY = ty * kSubcell;
+            m_player.aimAt(tx, ty);
         }
 
-        const int v = movementUnits(deltaMs);
-        const int beforeX = m_playerSubX;
-        const int beforeY = m_playerSubY;
-        m_playerSubX = approach(m_playerSubX, m_targetSubX, v);
-        m_playerSubY = approach(m_playerSubY, m_targetSubY, v);
-
-        if (m_playerSubX == beforeX && m_playerSubY == beforeY)
+        if (!m_player.advance(movementUnits(deltaMs)))
             return false;
 
         collectPowerUpAtPlayer();
