@@ -26,14 +26,15 @@ namespace pyrelite
 
         // How many enemies a generated arena seeds, and how far (Manhattan tiles)
         // they must spawn from the player pocket so the opening is never a death trap.
-        constexpr int kEnemyCount = 3;
+        constexpr int kEnemyCount = 4;
         constexpr int kEnemySpawnMinDistance = 4;
 
-        // Of those, how many are Chasers and how many Bouncers (the rest are
-        // Wanderers). One hunter, one ricocheting bouncer and one roamer keeps the
-        // arena varied but still dodgeable; tunable balance knobs.
+        // Of those, the archetype quota: a greedy Chaser, a ricocheting Bouncer and a
+        // pathfinding Hunter, with the rest left as random Wanderers. One of each plus a
+        // roamer keeps the arena varied but still dodgeable; tunable balance knobs.
         constexpr int kChaserCount = 1;
         constexpr int kBouncerCount = 1;
+        constexpr int kHunterCount = 1;
 
         // Decorrelate the enemy RNG stream from the power-up one (same seed would
         // otherwise tie drops to spawns); golden-ratio offset, splitmix64-friendly.
@@ -135,8 +136,8 @@ namespace pyrelite
     // Deterministically seed up to count enemies on empty tiles a safe distance from
     // the player pocket. Candidates are gathered in row-major order, then drawn (and
     // removed) with the enemy RNG, so the same seed always yields the same set. The
-    // first kChaserCount placed are Chasers, the next kBouncerCount Bouncers; the rest
-    // roam as Wanderers.
+    // first kChaserCount placed are Chasers, the next kBouncerCount Bouncers, the next
+    // kHunterCount Hunters; the rest roam as Wanderers.
     void Game::spawnEnemies(int count)
     {
         const auto hasEmptyNeighbour = [this](int x, int y)
@@ -172,6 +173,7 @@ namespace pyrelite
             const EnemyType type =
                 placed < kChaserCount ? EnemyType::Chaser
                 : placed < kChaserCount + kBouncerCount ? EnemyType::Bouncer
+                : placed < kChaserCount + kBouncerCount + kHunterCount ? EnemyType::Hunter
                 : EnemyType::Wanderer;
             addEnemy(x, y, type);
             candidates[pick] = candidates.back();
