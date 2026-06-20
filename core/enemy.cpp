@@ -3,6 +3,7 @@
 
 #include "bouncer.h"
 #include "chaser.h"
+#include "ghost.h"
 #include "hunter.h"
 #include "igame.h"
 #include "irng.h"
@@ -49,6 +50,11 @@ namespace pyrelite
         return m_subX != beforeX || m_subY != beforeY;
     }
 
+    bool Enemy::canEnter(const IGame &game, int x, int y) const
+    {
+        return game.walkable(x, y);
+    }
+
     std::optional<Direction> Enemy::randomWalkableDir(const IGame &game, IRng &rng) const
     {
         const int tx = tileX();
@@ -62,7 +68,7 @@ namespace pyrelite
             int nx = tx;
             int ny = ty;
             stepTile(d, nx, ny);
-            if (game.walkable(nx, ny))
+            if (canEnter(game, nx, ny))
                 options[count++] = d;
         }
         if (count == 0)
@@ -80,6 +86,8 @@ namespace pyrelite
             return std::make_unique<Bouncer>(tileX, tileY);
         case EnemyType::Hunter:
             return std::make_unique<Hunter>(tileX, tileY);
+        case EnemyType::Ghost:
+            return std::make_unique<Ghost>(tileX, tileY);
         case EnemyType::Wanderer:
             break;
         }

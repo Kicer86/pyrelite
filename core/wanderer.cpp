@@ -11,7 +11,7 @@ namespace pyrelite
         int ahead = tileX();
         int aheadY = tileY();
         stepTile(dir(), ahead, aheadY);
-        if (game.walkable(ahead, aheadY))
+        if (canEnter(game, ahead, aheadY))
             return dir(); // keep going straight
         return randomWalkableDir(game, rng);
     }

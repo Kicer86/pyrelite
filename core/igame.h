@@ -16,6 +16,11 @@ namespace pyrelite
         // blocked by a live bomb.
         virtual bool walkable(int x, int y) const = 0;
 
+        // As walkable, but bricks are passable too — only solid walls (and bombs) stop
+        // the mover. The wall-passing Ghost navigates by this; everyone else uses
+        // walkable.
+        virtual bool walkableThroughBricks(int x, int y) const = 0;
+
         // The tile the player currently occupies.
         virtual int playerX() const = 0;
         virtual int playerY() const = 0;

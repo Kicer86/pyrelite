@@ -13,7 +13,7 @@ namespace pyrelite
             int nx = tileX();
             int ny = tileY();
             stepTile(d, nx, ny);
-            return game.walkable(nx, ny);
+            return canEnter(game, nx, ny);
         };
 
         if (walkableAlong(dir()))
