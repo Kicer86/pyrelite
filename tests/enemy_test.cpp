@@ -242,20 +242,61 @@ TEST(EnemyTest, ChaserRoamsWhenWalledOffFromPlayer)
     EXPECT_EQ(game.state(), GameState::Playing);
 }
 
+TEST(EnemyTest, BouncerSweepsACorridorEndToEnd)
+{
+    // A 1-wide vertical corridor, walled off from the player pocket. A Bouncer dropped
+    // in the middle must ricochet off both ends — reaching the top AND the bottom over
+    // time — instead of walking one way and freezing.
+    Grid g(7, 7);
+    for (int y = 0; y < 7; ++y)
+        for (int x = 0; x < 7; ++x)
+            g.set(x, y, Tile::Wall);
+    g.set(1, 1, Tile::Empty);         // player pocket, walled off
+    for (int y = 2; y <= 5; ++y)
+        g.set(3, y, Tile::Empty);     // the corridor
+    Game game(g);
+    ASSERT_TRUE(game.addEnemy(3, 3, EnemyType::Bouncer));
+
+    bool reachedTop = false;
+    bool reachedBottom = false;
+    for (int i = 0; i < 4000 && !(reachedTop && reachedBottom); ++i)
+    {
+        game.update(16);
+        const IEnemy &e = *game.enemies().front();
+        if (e.tileX() == 3 && e.tileY() == 2)
+            reachedTop = true;
+        if (e.tileX() == 3 && e.tileY() == 5)
+            reachedBottom = true;
+    }
+    EXPECT_TRUE(reachedTop);
+    EXPECT_TRUE(reachedBottom);
+    EXPECT_EQ(game.state(), GameState::Playing); // never reaches the walled-off player
+}
+
 TEST(EnemyTest, ArenaSpawnsAMixOfArchetypes)
 {
-    // A generated arena seeds both hunters and roamers, so the variety actually
-    // reaches the player (not just one type by accident of the draw).
+    // A generated arena seeds every archetype, so the variety actually reaches the
+    // player (not just one type by accident of the draw).
     Game game(13, 11, 1);
     int chasers = 0;
+    int bouncers = 0;
     int wanderers = 0;
     for (const auto &e : game.enemies())
     {
-        if (e->type() == EnemyType::Chaser)
+        switch (e->type())
+        {
+        case EnemyType::Chaser:
             ++chasers;
-        else
+            break;
+        case EnemyType::Bouncer:
+            ++bouncers;
+            break;
+        case EnemyType::Wanderer:
             ++wanderers;
+            break;
+        }
     }
     EXPECT_GE(chasers, 1);
+    EXPECT_GE(bouncers, 1);
     EXPECT_GE(wanderers, 1);
 }

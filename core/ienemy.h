@@ -8,7 +8,7 @@
 
 namespace pyrelite
 {
-    enum class EnemyType { Wanderer, Chaser };
+    enum class EnemyType { Wanderer, Chaser, Bouncer };
 
     // A moving hazard as the rest of the game sees it: a position (sub-cell and tile)
     // an archetype tag, and a per-tick update. Pure interface — concrete archetypes

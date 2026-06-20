@@ -31,6 +31,23 @@ namespace pyrelite
         }
     }
 
+    // The opposite heading — used by enemies that ricochet straight back off a wall.
+    inline Direction reverse(Direction dir)
+    {
+        switch (dir)
+        {
+        case Direction::Up:
+            return Direction::Down;
+        case Direction::Down:
+            return Direction::Up;
+        case Direction::Left:
+            return Direction::Right;
+        case Direction::Right:
+            break;
+        }
+        return Direction::Left;
+    }
+
     // Move cur toward target by at most maxStep, never overshooting.
     inline int approach(int cur, int target, int maxStep)
     {

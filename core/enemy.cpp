@@ -1,6 +1,7 @@
 
 #include "enemy.h"
 
+#include "bouncer.h"
 #include "chaser.h"
 #include "igame.h"
 #include "irng.h"
@@ -74,6 +75,8 @@ namespace pyrelite
         {
         case EnemyType::Chaser:
             return std::make_unique<Chaser>(tileX, tileY);
+        case EnemyType::Bouncer:
+            return std::make_unique<Bouncer>(tileX, tileY);
         case EnemyType::Wanderer:
             break;
         }
