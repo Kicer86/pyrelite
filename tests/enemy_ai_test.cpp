@@ -5,6 +5,7 @@
 
 #include "bouncer.h"
 #include "chaser.h"
+#include "hunter.h"
 #include "igame.h"
 #include "irng.h"
 #include "wanderer.h"
@@ -182,4 +183,40 @@ TEST(EnemyAiTest, BouncerDeflectsAtAnInsideCornerWithoutRng)
     EXPECT_EQ(b.tileX(), 4);   // deflected to the one open side
     EXPECT_EQ(b.tileY(), 5);
     EXPECT_EQ(rng.calls(), 0); // even the corner case stays deterministic
+}
+
+TEST(EnemyAiTest, HunterReachesThePlayerAroundAWallWithoutRng)
+{
+    FakeWorld world(3, 5); // player two tiles to the right, on the same row
+    world.block(2, 5);     // a wall directly between them: a greedy step Right fails,
+                           // but a BFS route detours around it (via the open rows)
+    ScriptedRng rng;
+    Hunter h(1, 5);
+
+    bool reached = false;
+    for (int i = 0; i < 2000 && !reached; ++i)
+    {
+        h.integrate(world, rng, 16);
+        if (h.tileX() == 3 && h.tileY() == 5)
+            reached = true;
+    }
+    EXPECT_TRUE(reached);
+    EXPECT_EQ(rng.calls(), 0); // a reachable player is pathed to, never roamed toward
+}
+
+TEST(EnemyAiTest, HunterRoamsWhenNoPathToThePlayerExists)
+{
+    FakeWorld world(1, 10); // player far below, but sealed off in a 1-wide pocket
+    for (const auto [x, y] : {std::pair{1, 0}, {0, 1}, {2, 1},
+             {0, 2}, {2, 2}, {1, 3}})
+        world.block(x, y); // reachable area is just (1,1)-(1,2)
+    ScriptedRng rng;
+    Hunter h(1, 1);
+
+    for (int i = 0; i < 400; ++i)
+        h.integrate(world, rng, 16);
+
+    EXPECT_EQ(h.tileX(), 1);       // confined to the pocket
+    EXPECT_LE(h.tileY(), 2);       // never reached the walled-off player at y = 10
+    EXPECT_GT(rng.calls(), 0);     // with no route it falls back to roaming (RNG)
 }
