@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <iterator>
 #include <optional>
 #include <stdexcept>
 #include <utility>
@@ -41,17 +42,19 @@ namespace pyrelite
         // otherwise tie drops to spawns); golden-ratio offset, splitmix64-friendly.
         constexpr std::uint64_t kEnemySeedOffset = 0x9E3779B97F4A7C15ULL;
 
+        // Every kind a brick can drop, in one place. randomPowerUpType draws
+        // uniformly from this list, so a new power-up is added here (and to the
+        // PowerUpType enum) with no magic count or parallel switch to keep in sync.
+        constexpr PowerUpType kPowerUpTypes[] = {
+            PowerUpType::BombLimit,
+            PowerUpType::BombRange,
+            PowerUpType::Speed,
+        };
+
         PowerUpType randomPowerUpType(Rng &rng)
         {
-            switch (rng.below(3))
-            {
-            case 0:
-                return PowerUpType::BombLimit;
-            case 1:
-                return PowerUpType::BombRange;
-            default:
-                return PowerUpType::Speed;
-            }
+            return kPowerUpTypes[rng.below(
+                static_cast<std::uint32_t>(std::size(kPowerUpTypes)))];
         }
     }
 
