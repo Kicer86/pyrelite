@@ -3,6 +3,7 @@
 // NO real Game. Note the includes — chaser/wanderer + the interfaces, never game.h —
 // which is exactly what the IGame/IRng seam buys us.
 
+#include "bouncer.h"
 #include "chaser.h"
 #include "igame.h"
 #include "irng.h"
@@ -134,4 +135,51 @@ TEST(EnemyAiTest, WandererTurnsToTheScriptedDirectionWhenBlocked)
     EXPECT_EQ(w.tileX(), 6); // turned Right per the script
     EXPECT_EQ(w.tileY(), 5);
     EXPECT_EQ(rng.calls(), 1);
+}
+
+TEST(EnemyAiTest, BouncerHoldsItsLineWhileClearWithoutRng)
+{
+    FakeWorld world(0, 0); // a bouncer ignores the player
+    ScriptedRng rng;
+    Bouncer b(5, 5);       // default heading is Down, everything open
+
+    const int startTileY = b.tileY();
+    for (int i = 0; i < 200; ++i)
+        b.integrate(world, rng, 16);
+
+    EXPECT_GT(b.tileY(), startTileY); // travelled straight down
+    EXPECT_EQ(b.tileX(), 5);          // never left its lane
+    EXPECT_EQ(rng.calls(), 0);        // a clear line never consults the RNG
+}
+
+TEST(EnemyAiTest, BouncerReversesOffAWallWithoutRng)
+{
+    FakeWorld world(0, 0);
+    world.block(5, 6); // straight ahead (default heading Down) is a wall
+    ScriptedRng rng;
+    Bouncer b(5, 5);   // open above, so it ricochets straight back up
+
+    for (int i = 0; i < 40; ++i)
+        b.integrate(world, rng, 16);
+
+    EXPECT_LT(b.tileY(), 5);   // bounced upward off the wall
+    EXPECT_EQ(b.tileX(), 5);   // stayed in its lane
+    EXPECT_EQ(rng.calls(), 0); // a deterministic bounce never rolls the dice
+}
+
+TEST(EnemyAiTest, BouncerDeflectsAtAnInsideCornerWithoutRng)
+{
+    FakeWorld world(0, 0);
+    world.block(5, 6); // ahead (Down) blocked
+    world.block(5, 4); // behind (Up) blocked too -> can't bounce straight back
+    world.block(6, 5); // Right blocked, leaving only Left open
+    ScriptedRng rng;
+    Bouncer b(5, 5);
+
+    for (int i = 0; i < 40; ++i)
+        b.integrate(world, rng, 16);
+
+    EXPECT_EQ(b.tileX(), 4);   // deflected to the one open side
+    EXPECT_EQ(b.tileY(), 5);
+    EXPECT_EQ(rng.calls(), 0); // even the corner case stays deterministic
 }
