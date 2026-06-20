@@ -56,6 +56,27 @@ namespace pyrelite
             return kPowerUpTypes[rng.below(
                 static_cast<std::uint32_t>(std::size(kPowerUpTypes)))];
         }
+
+        // The archetype for the placed-th spawned enemy. The quota is filled in a
+        // fixed order — Chaser, Bouncer, Hunter, Ghost — and any slots beyond it roam
+        // as Wanderers. The cutoffs are the running totals of the quota.
+        EnemyType enemyTypeForSlot(int placed)
+        {
+            const int chaserCutoff = kChaserCount;
+            const int bouncerCutoff = chaserCutoff + kBouncerCount;
+            const int hunterCutoff = bouncerCutoff + kHunterCount;
+            const int ghostCutoff = hunterCutoff + kGhostCount;
+
+            if (placed < chaserCutoff)
+                return EnemyType::Chaser;
+            if (placed < bouncerCutoff)
+                return EnemyType::Bouncer;
+            if (placed < hunterCutoff)
+                return EnemyType::Hunter;
+            if (placed < ghostCutoff)
+                return EnemyType::Ghost;
+            return EnemyType::Wanderer;
+        }
     }
 
     Game::Game(Grid grid)
@@ -180,15 +201,7 @@ namespace pyrelite
             const std::size_t pick = m_enemyRng.below(
                 static_cast<std::uint32_t>(candidates.size()));
             const auto [x, y] = candidates[pick];
-            const int hunterCutoff = kChaserCount + kBouncerCount + kHunterCount;
-            const int ghostCutoff = hunterCutoff + kGhostCount;
-            const EnemyType type =
-                placed < kChaserCount ? EnemyType::Chaser
-                : placed < kChaserCount + kBouncerCount ? EnemyType::Bouncer
-                : placed < hunterCutoff ? EnemyType::Hunter
-                : placed < ghostCutoff ? EnemyType::Ghost
-                : EnemyType::Wanderer;
-            addEnemy(x, y, type);
+            addEnemy(x, y, enemyTypeForSlot(placed));
             candidates[pick] = candidates.back();
             candidates.pop_back();
         }
