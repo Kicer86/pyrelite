@@ -53,6 +53,22 @@ Game makeBoxedRoom()
     return Game(g);
 }
 
+// A U-shaped corridor whose only route to the player at (1,1) first leads AWAY from
+// them: down the right arm, across the bottom, up the left arm. A greedy chaser keeps
+// stepping toward the player, hits the dividing wall and oscillates at the dead end; a
+// BFS hunter follows the snake the whole way around. Enemy starts at (3,1).
+Game makeUMaze()
+{
+    Grid g(7, 7);
+    for (int y = 0; y < 7; ++y)
+        for (int x = 0; x < 7; ++x)
+            g.set(x, y, Tile::Wall);
+    for (const auto [x, y] : {std::pair{1, 1}, {1, 2}, {1, 3},
+             {2, 3}, {3, 3}, {3, 2}, {3, 1}})
+        g.set(x, y, Tile::Empty);
+    return Game(g);
+}
+
 } // namespace
 
 TEST(EnemyTest, AddEnemyPlacesAtTileCentre)
@@ -273,6 +289,37 @@ TEST(EnemyTest, BouncerSweepsACorridorEndToEnd)
     EXPECT_EQ(game.state(), GameState::Playing); // never reaches the walled-off player
 }
 
+TEST(EnemyTest, HunterPathfindsThroughAMazeToCatchThePlayer)
+{
+    // The BFS hunter rounds the U-corridor and runs the player down (a contact loss),
+    // even though the route starts by moving away from them.
+    Game game = makeUMaze();
+    ASSERT_TRUE(game.addEnemy(3, 1, EnemyType::Hunter));
+
+    bool caught = false;
+    for (int i = 0; i < 4000 && !caught; ++i)
+    {
+        game.update(16);
+        if (game.state() == GameState::Lost)
+            caught = true;
+    }
+    EXPECT_TRUE(caught);
+}
+
+TEST(EnemyTest, GreedyChaserStallsInTheMazeTheHunterSolves)
+{
+    // The same maze defeats the greedy Chaser: it can only ever step toward the player,
+    // so it oscillates at the dividing wall and never reaches them. This is exactly the
+    // gap the Hunter's pathfinding fills.
+    Game game = makeUMaze();
+    ASSERT_TRUE(game.addEnemy(3, 1, EnemyType::Chaser));
+
+    for (int i = 0; i < 4000; ++i)
+        game.update(16);
+
+    EXPECT_EQ(game.state(), GameState::Playing); // never caught the player
+}
+
 TEST(EnemyTest, ArenaSpawnsAMixOfArchetypes)
 {
     // A generated arena seeds every archetype, so the variety actually reaches the
@@ -280,6 +327,7 @@ TEST(EnemyTest, ArenaSpawnsAMixOfArchetypes)
     Game game(13, 11, 1);
     int chasers = 0;
     int bouncers = 0;
+    int hunters = 0;
     int wanderers = 0;
     for (const auto &e : game.enemies())
     {
@@ -291,6 +339,9 @@ TEST(EnemyTest, ArenaSpawnsAMixOfArchetypes)
         case EnemyType::Bouncer:
             ++bouncers;
             break;
+        case EnemyType::Hunter:
+            ++hunters;
+            break;
         case EnemyType::Wanderer:
             ++wanderers;
             break;
@@ -298,5 +349,6 @@ TEST(EnemyTest, ArenaSpawnsAMixOfArchetypes)
     }
     EXPECT_GE(chasers, 1);
     EXPECT_GE(bouncers, 1);
+    EXPECT_GE(hunters, 1);
     EXPECT_GE(wanderers, 1);
 }

@@ -8,6 +8,7 @@ add_library(core STATIC
     wanderer.cpp
     chaser.cpp
     bouncer.cpp
+    hunter.cpp
     fixed_timestep.cpp
 )
 
