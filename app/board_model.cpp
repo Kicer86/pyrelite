@@ -37,13 +37,14 @@ namespace
         return QStringLiteral("#d23b3b"); // roamer — red
     }
 
-    // Presentation only: a perk's player-facing label + one-line blurb. Like
-    // enemyColorFor, this is the single place perk copy lives, kept out of the headless
-    // core; adding a perk adds one case here.
+    // Presentation only: a perk's player-facing label + crystal colour. Like
+    // enemyColorFor, this is the single place perk art lives, kept out of the headless
+    // core; adding a perk adds one case here. The palette is a warm "loot" family
+    // (gold/amber/green), distinct from the cool brick power-up diamonds.
     struct PerkInfo
     {
         QString name;
-        QString description;
+        QString color;
     };
 
     PerkInfo perkInfoFor(pyrelite::PerkType perk)
@@ -51,16 +52,13 @@ namespace
         switch (perk)
         {
         case pyrelite::PerkType::ExtraBomb:
-            return {QStringLiteral("Extra Bomb"),
-                    QStringLiteral("Carry one more bomb at a time.")};
+            return {QStringLiteral("Extra Bomb"), QStringLiteral("#ffcf40")};
         case pyrelite::PerkType::BiggerBlast:
-            return {QStringLiteral("Bigger Blast"),
-                    QStringLiteral("Your explosions reach one tile further.")};
+            return {QStringLiteral("Bigger Blast"), QStringLiteral("#ff8c42")};
         case pyrelite::PerkType::SwiftFeet:
             break;
         }
-        return {QStringLiteral("Swift Feet"),
-                QStringLiteral("Move a little faster.")};
+        return {QStringLiteral("Swift Feet"), QStringLiteral("#7ee0a0")};
     }
 
     pyrelite::Direction toCore(BoardModel::Direction dir)
@@ -142,9 +140,9 @@ int BoardModel::xpToNextLevel() const
     return m_game.xpToNextLevel();
 }
 
-int BoardModel::perkChoiceCount() const
+int BoardModel::perkCrystalCount() const
 {
-    return static_cast<int>(m_game.perkChoices().size());
+    return static_cast<int>(m_game.perkCrystals().size());
 }
 
 BoardModel::State BoardModel::state() const
@@ -155,8 +153,6 @@ BoardModel::State BoardModel::state() const
         return Won;
     case pyrelite::GameState::Lost:
         return Lost;
-    case pyrelite::GameState::LevelUp:
-        return LevelUp;
     case pyrelite::GameState::Playing:
         break;
     }
@@ -228,20 +224,24 @@ QString BoardModel::enemyColor(int index) const
     return enemyColorFor(m_game.enemies().at(index)->type());
 }
 
-QString BoardModel::perkName(int index) const
+int BoardModel::perkCrystalX(int index) const
 {
-    return perkInfoFor(m_game.perkChoices().at(index)).name;
+    return m_game.perkCrystals().at(index).x;
 }
 
-QString BoardModel::perkDescription(int index) const
+int BoardModel::perkCrystalY(int index) const
 {
-    return perkInfoFor(m_game.perkChoices().at(index)).description;
+    return m_game.perkCrystals().at(index).y;
 }
 
-void BoardModel::choosePerk(int index)
+QString BoardModel::perkCrystalColor(int index) const
 {
-    if (m_game.choosePerk(index))
-        emitChanged();
+    return perkInfoFor(m_game.perkCrystals().at(index).type).color;
+}
+
+QString BoardModel::perkCrystalName(int index) const
+{
+    return perkInfoFor(m_game.perkCrystals().at(index).type).name;
 }
 
 int BoardModel::powerUpType(int index) const

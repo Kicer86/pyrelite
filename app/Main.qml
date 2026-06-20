@@ -46,10 +46,6 @@ Window {
             case Qt.Key_Right: case Qt.Key_D: board.setDirection(BoardModel.Right); event.accepted = true; break
             case Qt.Key_Space:                board.placeBomb();                    event.accepted = true; break
             case Qt.Key_R:                    board.restart();                      event.accepted = true; break
-            // Pick a perk during a level-up. Ignored (a no-op in the core) otherwise.
-            case Qt.Key_1:                    board.choosePerk(0);                  event.accepted = true; break
-            case Qt.Key_2:                    board.choosePerk(1);                  event.accepted = true; break
-            case Qt.Key_3:                    board.choosePerk(2);                  event.accepted = true; break
             }
         }
 
@@ -125,6 +121,54 @@ Window {
                     border.width: 2
                     x: board.powerUpX(index) * root.cell + (root.cell - width) / 2
                     y: board.powerUpY(index) * root.cell + (root.cell - height) / 2
+                }
+            }
+
+            // Perk crystals: the level-up reward cluster on the floor. Walk onto one to
+            // claim its perk; the rest vanish. Bigger, gold-rimmed and pulsing so they
+            // read as "special" loot next to the small brick power-ups, with the perk
+            // name floating above. Re-read on revision (a claim/level-up swaps the set).
+            Repeater {
+                model: board.perkCrystalCount
+
+                Item {
+                    required property int index
+                    readonly property string fill: { board.revision; return board.perkCrystalColor(index) }
+
+                    width: root.cell
+                    height: root.cell
+                    x: { board.revision; return board.perkCrystalX(index) * root.cell }
+                    y: { board.revision; return board.perkCrystalY(index) * root.cell }
+
+                    Rectangle {
+                        anchors.centerIn: parent
+                        width: root.cell * 0.5
+                        height: width
+                        radius: 4
+                        rotation: 45
+                        color: parent.fill
+                        border.color: "#fff1c0"
+                        border.width: 3
+
+                        SequentialAnimation on scale {
+                            loops: Animation.Infinite
+                            running: true
+                            NumberAnimation { from: 0.88; to: 1.12; duration: 650; easing.type: Easing.InOutSine }
+                            NumberAnimation { from: 1.12; to: 0.88; duration: 650; easing.type: Easing.InOutSine }
+                        }
+                    }
+
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        anchors.top: parent.top
+                        anchors.topMargin: 1
+                        text: { board.revision; return board.perkCrystalName(index) }
+                        color: "#fff1c0"
+                        font.pixelSize: 11
+                        font.bold: true
+                        style: Text.Outline
+                        styleColor: "#000000"
+                    }
                 }
             }
 
@@ -234,95 +278,10 @@ Window {
             }
         }
 
-        // Level-up overlay: freezes the arena and offers a perk to pick — click a card
-        // or press 1-3. Mirrors the end-of-run overlay's dim-and-choose pattern.
-        Rectangle {
-            anchors.fill: parent
-            visible: board.state === BoardModel.LevelUp
-            color: Qt.rgba(0, 0, 0, 0.72)
-
-            // Swallow clicks so they don't fall through to the board's focus handler.
-            MouseArea { anchors.fill: parent }
-
-            Column {
-                anchors.centerIn: parent
-                spacing: 20
-
-                Text {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    text: "Level " + board.level + " — choose a perk"
-                    color: "#ffe08a"
-                    font.pixelSize: 34
-                    font.bold: true
-                }
-
-                Row {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    spacing: 16
-
-                    Repeater {
-                        model: board.perkChoiceCount
-
-                        Rectangle {
-                            required property int index
-
-                            width: 200
-                            height: 150
-                            radius: 10
-                            color: cardMouse.containsMouse ? "#3a3320" : "#262626"
-                            border.color: "#ffd24a"
-                            border.width: 2
-
-                            Column {
-                                anchors.fill: parent
-                                anchors.margins: 14
-                                spacing: 10
-
-                                // Re-read on revision: choosePerk may open the next
-                                // banked offer without changing the card count, so the
-                                // Repeater would not rebuild on its own.
-                                Text {
-                                    width: parent.width
-                                    text: { board.revision
-                                            return (index + 1) + ". " + board.perkName(index) }
-                                    color: "#ffe08a"
-                                    font.pixelSize: 20
-                                    font.bold: true
-                                    wrapMode: Text.WordWrap
-                                }
-
-                                Text {
-                                    width: parent.width
-                                    text: { board.revision; return board.perkDescription(index) }
-                                    color: "#dddddd"
-                                    font.pixelSize: 15
-                                    wrapMode: Text.WordWrap
-                                }
-                            }
-
-                            MouseArea {
-                                id: cardMouse
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                onClicked: { board.choosePerk(index); scene.forceActiveFocus() }
-                            }
-                        }
-                    }
-                }
-
-                Text {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    text: "Click a card or press 1-3"
-                    color: "#aaaaaa"
-                    font.pixelSize: 15
-                }
-            }
-        }
-
         // End-of-run overlay: dims the arena and offers a restart on win or loss.
         Rectangle {
             anchors.fill: parent
-            visible: board.state === BoardModel.Won || board.state === BoardModel.Lost
+            visible: board.state !== BoardModel.Playing
             color: Qt.rgba(0, 0, 0, 0.6)
 
             MouseArea {
