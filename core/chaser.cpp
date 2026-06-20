@@ -41,7 +41,7 @@ namespace pyrelite
             int nx = tx;
             int ny = ty;
             stepTile(prefs[i], nx, ny);
-            if (game.walkable(nx, ny))
+            if (canEnter(game, nx, ny))
                 return prefs[i];
         }
         return randomWalkableDir(game, rng);

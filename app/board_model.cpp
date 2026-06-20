@@ -29,6 +29,8 @@ namespace
             return QStringLiteral("#17c0eb"); // ricochet — electric cyan
         case pyrelite::EnemyType::Hunter:
             return QStringLiteral("#ff1493"); // pathfinder — aggressive deep pink
+        case pyrelite::EnemyType::Ghost:
+            return QStringLiteral("#b3eaf6ff"); // wall-passer — translucent spectral
         case pyrelite::EnemyType::Wanderer:
             break;
         }

@@ -43,7 +43,7 @@ namespace pyrelite
             int nx = sx;
             int ny = sy;
             stepTile(d, nx, ny);
-            if (!game.walkable(nx, ny) || seen.contains({nx, ny}))
+            if (!canEnter(game, nx, ny) || seen.contains({nx, ny}))
                 continue;
             if (nx == gx && ny == gy)
                 return d; // the player is right next door
@@ -61,7 +61,7 @@ namespace pyrelite
                 int nx = cur.x;
                 int ny = cur.y;
                 stepTile(d, nx, ny);
-                if (!game.walkable(nx, ny) || seen.contains({nx, ny}))
+                if (!canEnter(game, nx, ny) || seen.contains({nx, ny}))
                     continue;
                 if (nx == gx && ny == gy)
                     return cur.first; // reached the player; head down this route

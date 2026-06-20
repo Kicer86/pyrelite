@@ -87,6 +87,10 @@ namespace pyrelite
         // blocked by a live bomb. From IGame, so enemy archetypes can navigate.
         bool walkable(int x, int y) const override;
 
+        // As walkable, but bricks count as passable (only solid walls and bombs block).
+        // The Ghost archetype moves by this rule.
+        bool walkableThroughBricks(int x, int y) const override;
+
         // Place an enemy of the given archetype centred on a walkable tile. Returns
         // false (placing nothing) if the tile is out of bounds or not Empty. The real
         // arena spawns enemies deterministically from the seed; this is also the test

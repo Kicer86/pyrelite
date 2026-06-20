@@ -35,7 +35,12 @@ namespace pyrelite
         // current (centred) tile, or nullopt if boxed in.
         virtual std::optional<Direction> chooseDirection(const IGame &game, IRng &rng) = 0;
 
-        // A uniformly random walkable orthogonal neighbour of the current tile, or
+        // Which tiles this archetype may move into — the single passability rule every
+        // archetype's navigation consults. Defaults to the game's walkable rule; the
+        // Ghost overrides it to pass through bricks.
+        virtual bool canEnter(const IGame &game, int x, int y) const;
+
+        // A uniformly random enterable orthogonal neighbour of the current tile, or
         // nullopt when boxed in. Candidates are gathered in a fixed order before the
         // draw, so the choice is reproducible from the RNG stream.
         std::optional<Direction> randomWalkableDir(const IGame &game, IRng &rng) const;
