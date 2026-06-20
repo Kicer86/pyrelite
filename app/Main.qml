@@ -124,6 +124,54 @@ Window {
                 }
             }
 
+            // Perk crystals: the level-up reward cluster on the floor. Walk onto one to
+            // claim its perk; the rest vanish. Bigger, gold-rimmed and pulsing so they
+            // read as "special" loot next to the small brick power-ups, with the perk
+            // name floating above. Re-read on revision (a claim/level-up swaps the set).
+            Repeater {
+                model: board.perkCrystalCount
+
+                Item {
+                    required property int index
+                    readonly property string fill: { board.revision; return board.perkCrystalColor(index) }
+
+                    width: root.cell
+                    height: root.cell
+                    x: { board.revision; return board.perkCrystalX(index) * root.cell }
+                    y: { board.revision; return board.perkCrystalY(index) * root.cell }
+
+                    Rectangle {
+                        anchors.centerIn: parent
+                        width: root.cell * 0.5
+                        height: width
+                        radius: 4
+                        rotation: 45
+                        color: parent.fill
+                        border.color: "#fff1c0"
+                        border.width: 3
+
+                        SequentialAnimation on scale {
+                            loops: Animation.Infinite
+                            running: true
+                            NumberAnimation { from: 0.88; to: 1.12; duration: 650; easing.type: Easing.InOutSine }
+                            NumberAnimation { from: 1.12; to: 0.88; duration: 650; easing.type: Easing.InOutSine }
+                        }
+                    }
+
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        anchors.top: parent.top
+                        anchors.topMargin: 1
+                        text: { board.revision; return board.perkCrystalName(index) }
+                        color: "#fff1c0"
+                        font.pixelSize: 11
+                        font.bold: true
+                        style: Text.Outline
+                        styleColor: "#000000"
+                    }
+                }
+            }
+
             // Bombs
             Repeater {
                 model: board.bombCount
@@ -194,6 +242,39 @@ Window {
                 border.width: 2
                 x: board.playerX * root.cell + (root.cell - width) / 2
                 y: board.playerY * root.cell + (root.cell - height) / 2
+            }
+        }
+
+        // Run HUD: current level and an XP bar toward the next. Top-left, never grabs
+        // input so focus-on-click still works.
+        Column {
+            anchors.left: parent.left
+            anchors.top: parent.top
+            anchors.margins: 10
+            spacing: 4
+
+            Text {
+                text: "Lv " + board.level
+                color: "#ffe08a"
+                font.pixelSize: 18
+                font.bold: true
+            }
+
+            Rectangle {
+                width: 130
+                height: 9
+                radius: 4
+                color: "#2a2a2a"
+                border.color: "#000000"
+                border.width: 1
+
+                Rectangle {
+                    height: parent.height
+                    radius: parent.radius
+                    width: parent.width
+                         * Math.min(1, board.xp / Math.max(1, board.xpToNextLevel))
+                    color: "#ffd24a"
+                }
             }
         }
 

@@ -37,6 +37,30 @@ namespace
         return QStringLiteral("#d23b3b"); // roamer — red
     }
 
+    // Presentation only: a perk's player-facing label + crystal colour. Like
+    // enemyColorFor, this is the single place perk art lives, kept out of the headless
+    // core; adding a perk adds one case here. The palette is a warm "loot" family
+    // (gold/amber/green), distinct from the cool brick power-up diamonds.
+    struct PerkInfo
+    {
+        QString name;
+        QString color;
+    };
+
+    PerkInfo perkInfoFor(pyrelite::PerkType perk)
+    {
+        switch (perk)
+        {
+        case pyrelite::PerkType::ExtraBomb:
+            return {QStringLiteral("Extra Bomb"), QStringLiteral("#ffcf40")};
+        case pyrelite::PerkType::BiggerBlast:
+            return {QStringLiteral("Bigger Blast"), QStringLiteral("#ff8c42")};
+        case pyrelite::PerkType::SwiftFeet:
+            break;
+        }
+        return {QStringLiteral("Swift Feet"), QStringLiteral("#7ee0a0")};
+    }
+
     pyrelite::Direction toCore(BoardModel::Direction dir)
     {
         switch (dir)
@@ -99,6 +123,26 @@ int BoardModel::powerUpCount() const
 int BoardModel::enemyCount() const
 {
     return static_cast<int>(m_game.enemies().size());
+}
+
+int BoardModel::level() const
+{
+    return m_game.level();
+}
+
+int BoardModel::xp() const
+{
+    return m_game.xp();
+}
+
+int BoardModel::xpToNextLevel() const
+{
+    return m_game.xpToNextLevel();
+}
+
+int BoardModel::perkCrystalCount() const
+{
+    return static_cast<int>(m_game.perkCrystals().size());
 }
 
 BoardModel::State BoardModel::state() const
@@ -178,6 +222,26 @@ qreal BoardModel::enemyY(int index) const
 QString BoardModel::enemyColor(int index) const
 {
     return enemyColorFor(m_game.enemies().at(index)->type());
+}
+
+int BoardModel::perkCrystalX(int index) const
+{
+    return m_game.perkCrystals().at(index).x;
+}
+
+int BoardModel::perkCrystalY(int index) const
+{
+    return m_game.perkCrystals().at(index).y;
+}
+
+QString BoardModel::perkCrystalColor(int index) const
+{
+    return perkInfoFor(m_game.perkCrystals().at(index).type).color;
+}
+
+QString BoardModel::perkCrystalName(int index) const
+{
+    return perkInfoFor(m_game.perkCrystals().at(index).type).name;
 }
 
 int BoardModel::powerUpType(int index) const

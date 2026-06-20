@@ -14,6 +14,7 @@ set(tests
     enemy_test
     enemy_ai_test
     death_test
+    progression_test
     input_validation_test
     fixed_timestep_test
 )

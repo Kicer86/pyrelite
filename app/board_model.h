@@ -24,6 +24,10 @@ class BoardModel : public QObject
     Q_PROPERTY(int explosionCount READ explosionCount NOTIFY changed)
     Q_PROPERTY(int powerUpCount READ powerUpCount NOTIFY changed)
     Q_PROPERTY(int enemyCount READ enemyCount NOTIFY changed)
+    Q_PROPERTY(int level READ level NOTIFY changed)
+    Q_PROPERTY(int xp READ xp NOTIFY changed)
+    Q_PROPERTY(int xpToNextLevel READ xpToNextLevel NOTIFY changed)
+    Q_PROPERTY(int perkCrystalCount READ perkCrystalCount NOTIFY changed)
     Q_PROPERTY(int revision READ revision NOTIFY changed)
     Q_PROPERTY(State state READ state NOTIFY changed)
     Q_PROPERTY(QString version READ version CONSTANT)
@@ -48,6 +52,10 @@ public:
     int explosionCount() const;
     int powerUpCount() const;
     int enemyCount() const;
+    int level() const;
+    int xp() const;
+    int xpToNextLevel() const;
+    int perkCrystalCount() const;
     int revision() const { return m_revision; }
     State state() const;
     QString version() const;
@@ -68,6 +76,13 @@ public:
     // carries no per-archetype logic; this is the single seam where enemy art lives
     // (a placeholder colour today, a sprite/animation source once art lands).
     Q_INVOKABLE QString enemyColor(int index) const;
+    // A floor perk crystal's tile position, fill colour and label. Like enemyColor,
+    // this is the single app-side seam where perk presentation lives; the core only
+    // names the type.
+    Q_INVOKABLE int perkCrystalX(int index) const;
+    Q_INVOKABLE int perkCrystalY(int index) const;
+    Q_INVOKABLE QString perkCrystalColor(int index) const;
+    Q_INVOKABLE QString perkCrystalName(int index) const;
 
     // Held-key movement: a press sets the direction, a release clears it only if it
     // is still the active one (last press wins). The core moves the player on its tick.
