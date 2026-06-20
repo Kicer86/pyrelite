@@ -42,6 +42,30 @@ namespace pyrelite
         // otherwise tie drops to spawns); golden-ratio offset, splitmix64-friendly.
         constexpr std::uint64_t kEnemySeedOffset = 0x9E3779B97F4A7C15ULL;
 
+        // And the perk-offer stream from both of the above, so which perks a level-up
+        // shows is decorrelated from spawns and drops yet still seed-deterministic.
+        constexpr std::uint64_t kPerkSeedOffset = 0xD1B54A32D192ED03ULL;
+
+        // In-run progression knobs (M3). XP banks per enemy killed and per brick
+        // cleared; advancing a level costs kXpBase, rising kXpStep each level (L1->2 =
+        // base, L2->3 = base + step, ...). A level-up offers kPerkChoiceCount perks.
+        // All tunable balance.
+        constexpr int kXpPerKill = 10;
+        constexpr int kXpPerBrick = 1;
+        constexpr int kXpBase = 10;
+        constexpr int kXpStep = 5;
+        constexpr int kPerkChoiceCount = 3;
+
+        // Every perk a level-up can offer, in one place (like kPowerUpTypes). offerPerks
+        // draws a distinct subset of size kPerkChoiceCount; today the catalog holds
+        // exactly that many, so all appear — adding a perk here (and to PerkType) turns
+        // the offer into a real random subset with no other change.
+        constexpr PerkType kPerkCatalog[] = {
+            PerkType::ExtraBomb,
+            PerkType::BiggerBlast,
+            PerkType::SwiftFeet,
+        };
+
         // Every kind a brick can drop, in one place. randomPowerUpType draws
         // uniformly from this list, so a new power-up is added here (and to the
         // PowerUpType enum) with no magic count or parallel switch to keep in sync.
@@ -89,6 +113,7 @@ namespace pyrelite
         , m_player(1, 1)
         , m_powerUpRng(seed)
         , m_enemyRng(seed + kEnemySeedOffset)
+        , m_perkRng(seed + kPerkSeedOffset)
     {
         if (!m_grid.inBounds(1, 1) || m_grid.at(1, 1) != Tile::Empty)
             throw std::invalid_argument("Spawn cell (1,1) must be in-bounds and empty");
@@ -296,7 +321,10 @@ namespace pyrelite
             {
                 return hasExplosionAt(enemy->tileX(), enemy->tileY());
             });
-        const bool killedEnemy = m_enemies.size() < before;
+        const std::size_t killed = before - m_enemies.size();
+        if (killed > 0)
+            awardXp(static_cast<int>(killed) * kXpPerKill);
+        const bool killedEnemy = killed > 0;
 
         const int px = playerX();
         const int py = playerY();
@@ -385,6 +413,7 @@ namespace pyrelite
                 {
                     m_grid.set(x, y, Tile::Empty);
                     dropPowerUp(x, y);
+                    awardXp(kXpPerBrick);
                     break;
                 }
             }
@@ -402,6 +431,88 @@ namespace pyrelite
     void Game::setBombRange(int range)
     {
         m_bombRange = std::max(1, range);
+    }
+
+    int Game::xpToNextLevel() const
+    {
+        return kXpBase + (m_level - 1) * kXpStep;
+    }
+
+    void Game::awardXp(int amount)
+    {
+        m_xp += amount;
+    }
+
+    // After the simulation settles, bank a pending level-up: if enough XP is in hand
+    // and the run is still live, open a fresh perk offer and freeze play in LevelUp
+    // until the player picks. Won/Lost take priority (this is a no-op unless Playing),
+    // and only one offer is open at a time. Returns true if a level-up was opened, so
+    // update() can report the change. Further banked levels are spent in choosePerk.
+    bool Game::checkLevelUp()
+    {
+        if (m_state != GameState::Playing)
+            return false;
+        if (m_xp < xpToNextLevel())
+            return false;
+
+        offerPerks();
+        m_state = GameState::LevelUp;
+        return true;
+    }
+
+    // Draw kPerkChoiceCount distinct perks from the catalog (capped at its size) with
+    // the perk RNG, then order them canonically so a fully-offered catalog keeps each
+    // card in a stable slot. Deterministic for a seed.
+    void Game::offerPerks()
+    {
+        m_perkChoices.clear();
+        std::vector<PerkType> pool(std::begin(kPerkCatalog), std::end(kPerkCatalog));
+        const int count = std::min<int>(kPerkChoiceCount, static_cast<int>(pool.size()));
+        for (int i = 0; i < count; ++i)
+        {
+            const std::size_t pick = m_perkRng.below(
+                static_cast<std::uint32_t>(pool.size()));
+            m_perkChoices.push_back(pool[pick]);
+            pool[pick] = pool.back();
+            pool.pop_back();
+        }
+        std::sort(m_perkChoices.begin(), m_perkChoices.end());
+    }
+
+    void Game::applyPerk(PerkType perk)
+    {
+        switch (perk)
+        {
+        case PerkType::ExtraBomb:
+            setBombLimit(m_bombLimit + 1);
+            break;
+        case PerkType::BiggerBlast:
+            setBombRange(m_bombRange + 1);
+            break;
+        case PerkType::SwiftFeet:
+            ++m_playerSpeed;
+            break;
+        }
+    }
+
+    bool Game::choosePerk(int index)
+    {
+        if (m_state != GameState::LevelUp)
+            return false;
+        if (index < 0 || index >= static_cast<int>(m_perkChoices.size()))
+            return false;
+
+        applyPerk(m_perkChoices[index]);
+        m_xp -= xpToNextLevel();
+        ++m_level;
+        m_perkChoices.clear();
+
+        // Spend any further banked levels with their own offers; otherwise play resumes.
+        if (m_xp >= xpToNextLevel())
+            offerPerks();
+        else
+            m_state = GameState::Playing;
+        return true;
     }
 
     bool Game::update(int deltaMs)
@@ -451,6 +562,10 @@ namespace pyrelite
         }
 
         if (resolveDeaths())
+            changed = true;
+
+        // Bank XP earned this tick into a level-up offer, unless the run just ended.
+        if (checkLevelUp())
             changed = true;
 
         return changed;

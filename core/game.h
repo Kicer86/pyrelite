@@ -38,9 +38,16 @@ namespace pyrelite
         PowerUpType type;
     };
 
-    // Playing until the player either clears every enemy (Won) or is caught by a
-    // flame or an enemy (Lost). Both end states freeze the simulation.
-    enum class GameState { Playing, Won, Lost };
+    // An in-run upgrade picked on level-up (M3 progression). Distinct from a PowerUp:
+    // perks are chosen from an offered set, power-ups are walked over. Their effects
+    // may overlap (both can raise a stat) but the two systems stay separate.
+    enum class PerkType { ExtraBomb, BiggerBlast, SwiftFeet };
+
+    // Playing until the player either clears every enemy (Won) or is caught by a flame
+    // or an enemy (Lost). LevelUp freezes the simulation the same way while the player
+    // picks one of the offered perks; Won and Lost end the run. All three non-Playing
+    // states halt update().
+    enum class GameState { Playing, Won, Lost, LevelUp };
 
     // Central game state: the arena grid, the player, active bombs, and live
     // explosion flames. Implements IGame so enemy AI sees only the slice it needs.
@@ -58,6 +65,20 @@ namespace pyrelite
         const Grid &grid() const { return m_grid; }
 
         GameState state() const { return m_state; }
+
+        // In-run progression (M3): experience banked this run, the current level (from
+        // 1), and the XP needed to advance from it to the next. Each enemy killed and
+        // each brick cleared grants XP; crossing the threshold enters LevelUp with a
+        // perk offer.
+        int xp() const { return m_xp; }
+        int level() const { return m_level; }
+        int xpToNextLevel() const;
+
+        // The perks offered for a pending level-up; empty unless state() is LevelUp.
+        // choosePerk applies the one at index and resumes play (or, if more levels are
+        // banked, opens the next offer). Out-of-range or off-LevelUp calls do nothing.
+        const std::vector<PerkType> &perkChoices() const { return m_perkChoices; }
+        bool choosePerk(int index);
 
         // Player position in sub-units (kSubcell per tile) for smooth rendering...
         int playerSubX() const { return m_player.subX; }
@@ -134,6 +155,10 @@ namespace pyrelite
         void dropPowerUp(int x, int y);
         void collectPowerUpAtPlayer();
         void applyPowerUp(PowerUpType type);
+        void awardXp(int amount);
+        bool checkLevelUp();
+        void offerPerks();
+        void applyPerk(PerkType perk);
 
         Grid m_grid;
         GridMover m_player;
@@ -144,8 +169,12 @@ namespace pyrelite
         int m_bombLimit = 1;
         int m_bombRange = 2;
         int m_playerSpeed = 1;
+        int m_xp = 0;
+        int m_level = 1;
+        std::vector<PerkType> m_perkChoices;
         Rng m_powerUpRng;
         Rng m_enemyRng;
+        Rng m_perkRng;
         GameState m_state = GameState::Playing;
         std::optional<Direction> m_heldDir;
         bool m_pendingBomb = false;
