@@ -46,6 +46,10 @@ Window {
             case Qt.Key_Right: case Qt.Key_D: board.setDirection(BoardModel.Right); event.accepted = true; break
             case Qt.Key_Space:                board.placeBomb();                    event.accepted = true; break
             case Qt.Key_R:                    board.restart();                      event.accepted = true; break
+            // Pick a perk during a level-up. Ignored (a no-op in the core) otherwise.
+            case Qt.Key_1:                    board.choosePerk(0);                  event.accepted = true; break
+            case Qt.Key_2:                    board.choosePerk(1);                  event.accepted = true; break
+            case Qt.Key_3:                    board.choosePerk(2);                  event.accepted = true; break
             }
         }
 
@@ -197,10 +201,128 @@ Window {
             }
         }
 
+        // Run HUD: current level and an XP bar toward the next. Top-left, never grabs
+        // input so focus-on-click still works.
+        Column {
+            anchors.left: parent.left
+            anchors.top: parent.top
+            anchors.margins: 10
+            spacing: 4
+
+            Text {
+                text: "Lv " + board.level
+                color: "#ffe08a"
+                font.pixelSize: 18
+                font.bold: true
+            }
+
+            Rectangle {
+                width: 130
+                height: 9
+                radius: 4
+                color: "#2a2a2a"
+                border.color: "#000000"
+                border.width: 1
+
+                Rectangle {
+                    height: parent.height
+                    radius: parent.radius
+                    width: parent.width
+                         * Math.min(1, board.xp / Math.max(1, board.xpToNextLevel))
+                    color: "#ffd24a"
+                }
+            }
+        }
+
+        // Level-up overlay: freezes the arena and offers a perk to pick — click a card
+        // or press 1-3. Mirrors the end-of-run overlay's dim-and-choose pattern.
+        Rectangle {
+            anchors.fill: parent
+            visible: board.state === BoardModel.LevelUp
+            color: Qt.rgba(0, 0, 0, 0.72)
+
+            // Swallow clicks so they don't fall through to the board's focus handler.
+            MouseArea { anchors.fill: parent }
+
+            Column {
+                anchors.centerIn: parent
+                spacing: 20
+
+                Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: "Level " + board.level + " — choose a perk"
+                    color: "#ffe08a"
+                    font.pixelSize: 34
+                    font.bold: true
+                }
+
+                Row {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    spacing: 16
+
+                    Repeater {
+                        model: board.perkChoiceCount
+
+                        Rectangle {
+                            required property int index
+
+                            width: 200
+                            height: 150
+                            radius: 10
+                            color: cardMouse.containsMouse ? "#3a3320" : "#262626"
+                            border.color: "#ffd24a"
+                            border.width: 2
+
+                            Column {
+                                anchors.fill: parent
+                                anchors.margins: 14
+                                spacing: 10
+
+                                // Re-read on revision: choosePerk may open the next
+                                // banked offer without changing the card count, so the
+                                // Repeater would not rebuild on its own.
+                                Text {
+                                    width: parent.width
+                                    text: { board.revision
+                                            return (index + 1) + ". " + board.perkName(index) }
+                                    color: "#ffe08a"
+                                    font.pixelSize: 20
+                                    font.bold: true
+                                    wrapMode: Text.WordWrap
+                                }
+
+                                Text {
+                                    width: parent.width
+                                    text: { board.revision; return board.perkDescription(index) }
+                                    color: "#dddddd"
+                                    font.pixelSize: 15
+                                    wrapMode: Text.WordWrap
+                                }
+                            }
+
+                            MouseArea {
+                                id: cardMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                onClicked: { board.choosePerk(index); scene.forceActiveFocus() }
+                            }
+                        }
+                    }
+                }
+
+                Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: "Click a card or press 1-3"
+                    color: "#aaaaaa"
+                    font.pixelSize: 15
+                }
+            }
+        }
+
         // End-of-run overlay: dims the arena and offers a restart on win or loss.
         Rectangle {
             anchors.fill: parent
-            visible: board.state !== BoardModel.Playing
+            visible: board.state === BoardModel.Won || board.state === BoardModel.Lost
             color: Qt.rgba(0, 0, 0, 0.6)
 
             MouseArea {

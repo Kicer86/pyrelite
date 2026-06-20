@@ -37,6 +37,32 @@ namespace
         return QStringLiteral("#d23b3b"); // roamer — red
     }
 
+    // Presentation only: a perk's player-facing label + one-line blurb. Like
+    // enemyColorFor, this is the single place perk copy lives, kept out of the headless
+    // core; adding a perk adds one case here.
+    struct PerkInfo
+    {
+        QString name;
+        QString description;
+    };
+
+    PerkInfo perkInfoFor(pyrelite::PerkType perk)
+    {
+        switch (perk)
+        {
+        case pyrelite::PerkType::ExtraBomb:
+            return {QStringLiteral("Extra Bomb"),
+                    QStringLiteral("Carry one more bomb at a time.")};
+        case pyrelite::PerkType::BiggerBlast:
+            return {QStringLiteral("Bigger Blast"),
+                    QStringLiteral("Your explosions reach one tile further.")};
+        case pyrelite::PerkType::SwiftFeet:
+            break;
+        }
+        return {QStringLiteral("Swift Feet"),
+                QStringLiteral("Move a little faster.")};
+    }
+
     pyrelite::Direction toCore(BoardModel::Direction dir)
     {
         switch (dir)
@@ -101,6 +127,26 @@ int BoardModel::enemyCount() const
     return static_cast<int>(m_game.enemies().size());
 }
 
+int BoardModel::level() const
+{
+    return m_game.level();
+}
+
+int BoardModel::xp() const
+{
+    return m_game.xp();
+}
+
+int BoardModel::xpToNextLevel() const
+{
+    return m_game.xpToNextLevel();
+}
+
+int BoardModel::perkChoiceCount() const
+{
+    return static_cast<int>(m_game.perkChoices().size());
+}
+
 BoardModel::State BoardModel::state() const
 {
     switch (m_game.state())
@@ -109,6 +155,8 @@ BoardModel::State BoardModel::state() const
         return Won;
     case pyrelite::GameState::Lost:
         return Lost;
+    case pyrelite::GameState::LevelUp:
+        return LevelUp;
     case pyrelite::GameState::Playing:
         break;
     }
@@ -178,6 +226,22 @@ qreal BoardModel::enemyY(int index) const
 QString BoardModel::enemyColor(int index) const
 {
     return enemyColorFor(m_game.enemies().at(index)->type());
+}
+
+QString BoardModel::perkName(int index) const
+{
+    return perkInfoFor(m_game.perkChoices().at(index)).name;
+}
+
+QString BoardModel::perkDescription(int index) const
+{
+    return perkInfoFor(m_game.perkChoices().at(index)).description;
+}
+
+void BoardModel::choosePerk(int index)
+{
+    if (m_game.choosePerk(index))
+        emitChanged();
 }
 
 int BoardModel::powerUpType(int index) const
