@@ -5,8 +5,8 @@
 #include <QString>
 #include <QtQml/qqmlregistration.h>
 
-#include "fixed_timestep.h"
-#include "game.h"
+#include "game/fixed_timestep.h"
+#include "game/game.h"
 
 // QML-facing adapter over the core Game: board size + tiles, the player, bombs,
 // and explosion flames. A single changed() signal (plus a bumping revision used
