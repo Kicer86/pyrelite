@@ -84,9 +84,9 @@ TEST(ExplosionTest, DestroysOneBrickAndStops)
     game.update(2000);
 
     EXPECT_TRUE(game.hasExplosionAt(4, 3));            // first brick is hit
-    EXPECT_EQ(game.grid().at(4, 3), Tile::Empty);      // and destroyed
+    EXPECT_EQ(game.tileAt(4, 3), Tile::Empty);         // and destroyed
     EXPECT_FALSE(game.hasExplosionAt(5, 3));           // blast stops past it
-    EXPECT_EQ(game.grid().at(5, 3), Tile::Brick);      // second brick survives
+    EXPECT_EQ(game.tileAt(5, 3), Tile::Brick);         // second brick survives
 }
 
 TEST(ExplosionTest, FlamesExpire)

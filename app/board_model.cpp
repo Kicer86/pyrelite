@@ -8,11 +8,9 @@
 
 namespace
 {
-    // Larger than one screen on purpose: the view no longer fits the whole board
-    // to the window, it scrolls a fixed-size grid (see Main.qml camera). Odd dims
-    // keep the classic border-wall + even/even pillar lattice symmetric.
-    constexpr int kColumns = 31;
-    constexpr int kRows = 25;
+    // The game runs on the infinite streamed World (see core/world.h): the view
+    // renders a culled window of chunks around the player (Main.qml camera), so there
+    // is no fixed board size — only a seed.
     constexpr std::uint64_t kSeed = 1; // fixed for now; run seeds come later
     constexpr int kStepMs = 16;        // ~60 Hz simulation quantum
     constexpr double kMaxFrameMs = 250; // cap catch-up after the render loop stalls
@@ -83,19 +81,19 @@ namespace
 
 BoardModel::BoardModel(QObject *parent)
     : QObject(parent)
-    , m_game(kColumns, kRows, kSeed)
+    , m_game(kSeed, pyrelite::Game::Streamed{})
     , m_step(kStepMs, kMaxFrameMs)
 {
 }
 
 int BoardModel::columns() const
 {
-    return m_game.grid().width();
+    return m_game.columns();
 }
 
 int BoardModel::rows() const
 {
-    return m_game.grid().height();
+    return m_game.rows();
 }
 
 qreal BoardModel::playerX() const
@@ -170,7 +168,7 @@ QString BoardModel::version() const
 
 int BoardModel::tileAt(int x, int y) const
 {
-    switch (m_game.grid().at(x, y))
+    switch (m_game.tileAt(x, y))
     {
     case pyrelite::Tile::Wall:
         return Wall;
@@ -304,7 +302,7 @@ void BoardModel::update(double deltaMs)
 
 void BoardModel::restart()
 {
-    m_game = pyrelite::Game(kColumns, kRows, kSeed);
+    m_game = pyrelite::Game(kSeed, pyrelite::Game::Streamed{});
     m_step = pyrelite::FixedTimestep(kStepMs, kMaxFrameMs);
     m_activeDir = -1;
     emitChanged();

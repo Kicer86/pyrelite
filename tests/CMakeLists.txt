@@ -7,6 +7,10 @@ set(tests
     grid_test
     rng_test
     arena_test
+    world_gen_test
+    world_test
+    streamed_game_test
+    movement_test
     game_test
     bomb_test
     explosion_test

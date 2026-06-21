@@ -34,36 +34,28 @@ Window {
     property real viewY: 0
 
     // Desired camera offset for one axis, given where the camera is NOW: keep the
-    // player inside the central deadzone box, pushing the camera only when they
-    // cross its edge, then clamp so the view never scrolls past the arena border.
-    // If the board is smaller than the viewport on this axis, centre it instead.
-    function cameraTarget(offset, viewport, content, playerTile) {
-        if (content <= viewport)
-            return (viewport - content) / 2
+    // player inside the central deadzone box, pushing the camera only when they cross
+    // its edge. The world is infinite, so there is no border to clamp against.
+    function cameraTarget(offset, viewport, playerTile) {
         const screen = (playerTile + 0.5) * cell + offset // player centre on screen
         const half = viewport * deadzone / 2
-        let target = offset
         if (screen < viewport / 2 - half)
-            target = offset + (viewport / 2 - half) - screen
-        else if (screen > viewport / 2 + half)
-            target = offset - (screen - (viewport / 2 + half))
-        return Math.max(viewport - content, Math.min(0, target))
+            return offset + (viewport / 2 - half) - screen
+        if (screen > viewport / 2 + half)
+            return offset - (screen - (viewport / 2 + half))
+        return offset
     }
 
-    // Centred-on-player offset for one axis (the old hard-lock formula), clamped to
-    // the arena border. Used only to snap the camera on load/restart so it doesn't
-    // glide across the whole arena from a stale position.
-    function centeredOffset(viewport, content, playerTile) {
-        if (content <= viewport)
-            return (viewport - content) / 2
-        return Math.max(viewport - content,
-                        Math.min(0, viewport / 2 - (playerTile + 0.5) * cell))
+    // Centred-on-player offset for one axis. Used only to snap the camera on load and
+    // restart so it doesn't glide in from a stale position.
+    function centeredOffset(viewport, playerTile) {
+        return viewport / 2 - (playerTile + 0.5) * cell
     }
 
     // Snap the camera straight to the player (no easing), for load and restart.
     function recenter() {
-        viewX = centeredOffset(scene.width, boardView.width, board.playerX)
-        viewY = centeredOffset(scene.height, boardView.height, board.playerY)
+        viewX = centeredOffset(scene.width, board.playerX)
+        viewY = centeredOffset(scene.height, board.playerY)
     }
 
     // Drives bomb fuses + explosions in the core, once per rendered frame.
@@ -76,8 +68,8 @@ Window {
             // Ease the camera toward its deadzone-constrained target. The factor is
             // derived from frameTime so the catch-up rate is frame-rate independent.
             const k = 1 - Math.exp(-frameTime / root.followTau)
-            root.viewX += (root.cameraTarget(root.viewX, scene.width, boardView.width, board.playerX) - root.viewX) * k
-            root.viewY += (root.cameraTarget(root.viewY, scene.height, boardView.height, board.playerY) - root.viewY) * k
+            root.viewX += (root.cameraTarget(root.viewX, scene.width, board.playerX) - root.viewX) * k
+            root.viewY += (root.cameraTarget(root.viewY, scene.height, board.playerY) - root.viewY) * k
         }
     }
 
@@ -121,44 +113,50 @@ Window {
 
         Item {
             id: boardView
-            width: board.columns * root.cell
-            height: board.rows * root.cell
-
-            // Camera follow: the smoothed offset maintained in the per-frame tick.
+            // No fixed size: the world is infinite. Children are positioned at their
+            // GLOBAL tile coordinate (tile * cell); this Item just carries the camera
+            // offset, smoothed in the per-frame tick.
             x: root.viewX
             y: root.viewY
 
             // Start centred on the spawn rather than easing in from (0, 0).
             Component.onCompleted: root.recenter()
 
-            Grid {
-                anchors.fill: parent
-                columns: board.columns
-                rows: board.rows
+            // Culled terrain: only the tiles overlapping the viewport (plus a one-tile
+            // margin) are instantiated, each at its GLOBAL tile position. As the camera
+            // scrolls, the window origin (floor of the camera offset) shifts, so a fixed
+            // pool of rectangles recycles to new coordinates — the infinite world drawn
+            // at bounded cost.
+            Repeater {
+                id: terrain
+                readonly property int cols: Math.ceil(scene.width / root.cell) + 2
+                readonly property int rows: Math.ceil(scene.height / root.cell) + 2
+                readonly property int originX: Math.floor(-root.viewX / root.cell) - 1
+                readonly property int originY: Math.floor(-root.viewY / root.cell) - 1
 
-                Repeater {
-                    model: board.columns * board.rows
+                model: cols * rows
 
-                    Rectangle {
-                        required property int index
+                Rectangle {
+                    required property int index
 
-                        readonly property int cx: index % board.columns
-                        readonly property int cy: Math.floor(index / board.columns)
-                        // Re-read the tile whenever the board changes (revision),
-                        // so destroyed bricks turn to floor.
-                        readonly property int tile: {
-                            board.revision
-                            return board.tileAt(cx, cy)
-                        }
-
-                        width: root.cell
-                        height: root.cell
-                        color: tile === BoardModel.Wall ? "#555a5e"
-                             : tile === BoardModel.Brick ? "#9c6b3c"
-                             : "#3a7d3a"
-                        border.color: "#2a2a2a"
-                        border.width: 1
+                    readonly property int gx: terrain.originX + (index % terrain.cols)
+                    readonly property int gy: terrain.originY + Math.floor(index / terrain.cols)
+                    // Re-read on scroll (gx/gy change) and on board changes (revision),
+                    // so streamed-in tiles and bombed-open bricks both show.
+                    readonly property int tile: {
+                        board.revision
+                        return board.tileAt(gx, gy)
                     }
+
+                    width: root.cell
+                    height: root.cell
+                    x: gx * root.cell
+                    y: gy * root.cell
+                    color: tile === BoardModel.Wall ? "#555a5e"
+                         : tile === BoardModel.Brick ? "#9c6b3c"
+                         : "#3a7d3a"
+                    border.color: "#2a2a2a"
+                    border.width: 1
                 }
             }
 
@@ -339,10 +337,11 @@ Window {
             }
         }
 
-        // End-of-run overlay: dims the arena and offers a restart on win or loss.
+        // End-of-run overlay: dims the world and offers a restart on death. The
+        // streamed world is endless, so the only end state is Lost.
         Rectangle {
             anchors.fill: parent
-            visible: board.state !== BoardModel.Playing
+            visible: board.state === BoardModel.Lost
             color: Qt.rgba(0, 0, 0, 0.6)
 
             MouseArea {
@@ -356,8 +355,8 @@ Window {
 
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: board.state === BoardModel.Won ? "Arena cleared!" : "Game Over"
-                    color: board.state === BoardModel.Won ? "#7ee07e" : "#ff6b6b"
+                    text: "Game Over"
+                    color: "#ff6b6b"
                     font.pixelSize: 44
                     font.bold: true
                 }
