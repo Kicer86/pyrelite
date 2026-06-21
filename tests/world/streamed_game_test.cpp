@@ -3,14 +3,70 @@
 
 #include <cstdint>
 #include <cstdlib>
+#include <set>
 #include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
 
 #include "world/chunk.h"
+#include "world/world.h"
 #include "grid/grid.h"
 #include "grid/movement.h"
+
+namespace
+{
+    pyrelite::Direction opposite(pyrelite::Direction d)
+    {
+        switch (d)
+        {
+        case pyrelite::Direction::Up:    return pyrelite::Direction::Down;
+        case pyrelite::Direction::Down:  return pyrelite::Direction::Up;
+        case pyrelite::Direction::Left:  return pyrelite::Direction::Right;
+        case pyrelite::Direction::Right: return pyrelite::Direction::Left;
+        }
+        return d;
+    }
+
+    // Walk the player east along the (connected, winding) channel until its chunk is at
+    // least `targetChunkX` — a DFS over walkable tiles that physically backtracks, so it
+    // copes with whatever shape the channel takes. Returns whether it got there.
+    bool walkEastTo(pyrelite::Game &game, int targetChunkX)
+    {
+        using pyrelite::Direction;
+        const auto here = [&] { return std::pair{game.playerX(), game.playerY()}; };
+        std::set<std::pair<int, int>> visited{here()};
+        std::vector<Direction> trail;
+        const Direction order[] = {Direction::Right, Direction::Down,
+                                   Direction::Up, Direction::Left};
+        for (int guard = 0; guard < 50000; ++guard)
+        {
+            if (pyrelite::World::chunkCoord(game.playerX()) >= targetChunkX)
+                return true;
+            bool advanced = false;
+            for (Direction d : order)
+            {
+                if (!game.tryMove(d))
+                    continue;
+                if (visited.insert(here()).second)
+                {
+                    trail.push_back(d);
+                    advanced = true;
+                    break;
+                }
+                game.tryMove(opposite(d)); // already seen: step back and try another
+            }
+            if (!advanced)
+            {
+                if (trail.empty())
+                    return false;
+                game.tryMove(opposite(trail.back()));
+                trail.pop_back();
+            }
+        }
+        return pyrelite::World::chunkCoord(game.playerX()) >= targetChunkX;
+    }
+}
 
 using namespace pyrelite;
 
@@ -55,10 +111,11 @@ TEST(StreamedGameTest, RemoteEnemiesAreNotSimulatedOutsideTheActiveWindow)
 {
     Game game(1, Game::Streamed{});
     EXPECT_FALSE(game.walkable(3 * kChunkSize, 0));
-    for (int i = 0; i < 7; ++i)
-        ASSERT_TRUE(game.tryMove(Direction::Down));
-    for (int i = 0; i < 80; ++i)
-        ASSERT_TRUE(game.tryMove(Direction::Right));
+
+    // Travel far enough east that the origin chunk (where the starter enemies live) is
+    // outside the player's active simulation window. Chunk >= 4 puts chunks 0 and 1 both
+    // out of the +/-2 window, so every starter enemy (spawned within 24 tiles) is remote.
+    ASSERT_TRUE(walkEastTo(game, 4));
     EXPECT_FALSE(game.walkable(0, 0));
 
     std::vector<std::pair<int, int>> before;

@@ -34,23 +34,14 @@ namespace
     // global coordinates, for whole-region connectivity checks across seams.
     struct Region
     {
-        int baseX = 0;
-        int baseY = 0;
         int width = 0;
         int height = 0;
         std::vector<Tile> tiles;
-
-        Tile local(int lx, int ly) const
-        {
-            return tiles[static_cast<std::size_t>(ly) * width + lx];
-        }
     };
 
     Region materialize(std::uint64_t seed, int cx0, int cy0, int cxCount, int cyCount)
     {
         Region r;
-        r.baseX = cx0 * kChunkSize;
-        r.baseY = cy0 * kChunkSize;
         r.width = cxCount * kChunkSize;
         r.height = cyCount * kChunkSize;
         r.tiles.assign(static_cast<std::size_t>(r.width) * r.height, Tile::Empty);
@@ -69,23 +60,34 @@ namespace
         return r;
     }
 
-    int countNonWall(const Region &r)
+    template <typename Pred>
+    int countIf(const Region &r, Pred pred)
     {
         int n = 0;
         for (Tile t : r.tiles)
-            if (t != Tile::Wall)
+            if (pred(t))
                 ++n;
         return n;
     }
 
-    // Flood from `start`, crossing only cells that pass `passable`. Returns the seen mask.
+    template <typename Pred>
+    int firstWhere(const Region &r, Pred pred)
+    {
+        for (std::size_t i = 0; i < r.tiles.size(); ++i)
+            if (pred(r.tiles[i]))
+                return static_cast<int>(i);
+        return -1;
+    }
+
+    // Flood from `start`, crossing only cells that pass `passable`. Returns the count seen.
     template <typename Passable>
-    std::vector<char> flood(const Region &r, int start, Passable passable)
+    int floodCount(const Region &r, int start, Passable passable)
     {
         std::vector<char> seen(r.tiles.size(), 0);
         if (start < 0 || !passable(r.tiles[start]))
-            return seen;
+            return 0;
 
+        int reached = 0;
         std::vector<int> stack{start};
         while (!stack.empty())
         {
@@ -94,6 +96,7 @@ namespace
             if (seen[idx] || !passable(r.tiles[idx]))
                 continue;
             seen[idx] = 1;
+            ++reached;
 
             const int lx = idx % r.width;
             const int ly = idx / r.width;
@@ -102,16 +105,11 @@ namespace
             if (ly > 0)            stack.push_back(idx - r.width);
             if (ly < r.height - 1) stack.push_back(idx + r.width);
         }
-        return seen;
+        return reached;
     }
 
-    int firstNonWall(const Region &r)
-    {
-        for (std::size_t i = 0; i < r.tiles.size(); ++i)
-            if (r.tiles[i] != Tile::Wall)
-                return static_cast<int>(i);
-        return -1;
-    }
+    bool isEmpty(Tile t) { return t == Tile::Empty; }
+    bool notSolid(Tile t) { return !isSolid(t); }
 }
 
 TEST(WorldGenTest, SameSeedAndCoordsSameChunk)
@@ -140,75 +138,84 @@ TEST(WorldGenTest, NeighbouringChunksDiffer)
     EXPECT_GT(sigs.size(), 1u);
 }
 
-TEST(WorldGenTest, AllBiomesAppearAcrossChunks)
+TEST(WorldGenTest, AllStylesAppearAcrossChunks)
 {
-    std::set<Biome> biomes;
+    std::set<Biome> styles;
     for (int cy = 0; cy < 12; ++cy)
         for (int cx = 0; cx < 12; ++cx)
-            biomes.insert(generateChunk(1, cx, cy).biome());
-    EXPECT_EQ(biomes.size(), static_cast<std::size_t>(kBiomeCount));
+            styles.insert(generateChunk(1, cx, cy).biome());
+    EXPECT_EQ(styles.size(), static_cast<std::size_t>(kBiomeCount));
 }
 
-TEST(WorldGenTest, RegionIsFullyConnectedAcrossSeams)
+TEST(WorldGenTest, ChannelIsOneConnectedComponentWithoutBombing)
 {
-    // Bricks are bomb-through and interior stone only ever sits on isolated pillar
-    // slots, so the non-Wall tiles of a multi-chunk region form ONE connected
-    // component — no pocket is ever sealed off, on any seed.
+    // The whole region's floor (Empty) is a single connected component: flooding over
+    // Empty ONLY (no bombing) from any one floor cell must reach every floor cell, on
+    // any seed. This is the by-construction "walkable chunk-to-chunk" guarantee that
+    // replaces the old fixed-doorway spine.
     for (std::uint64_t seed = 1; seed <= 6; ++seed)
     {
         const Region r = materialize(seed, -1, -1, 3, 3);
-        const auto seen = flood(r, firstNonWall(r), [](Tile t) { return t != Tile::Wall; });
-        int reached = 0;
-        for (char c : seen)
-            reached += c;
-        EXPECT_EQ(reached, countNonWall(r)) << "seed " << seed;
+        const int reached = floodCount(r, firstWhere(r, isEmpty), isEmpty);
+        EXPECT_EQ(reached, countIf(r, isEmpty)) << "seed " << seed;
     }
 }
 
-TEST(WorldGenTest, DoorwaysConnectEveryChamberWithoutBombing)
+TEST(WorldGenTest, PlayableAreaIsReachableByBombing)
 {
-    // Flood over EMPTY ONLY (i.e. no bombing) from the origin chamber's crossroads. The
-    // spine + fixed doorways must carry it to the central crossroads of every chamber in
-    // the region — the world is walkable chunk-to-chunk by construction.
+    // The playable area (floor + bomb-through brick, i.e. everything not solid) is one
+    // connected component: with bombing, the player can reach every non-solid cell. No
+    // brick is ever sealed off behind solid rock/void.
     for (std::uint64_t seed = 1; seed <= 6; ++seed)
     {
-        const int cx0 = -1, cy0 = -1, n = 3;
-        const Region r = materialize(seed, cx0, cy0, n, n);
-        const int centre = kChunkSize / 2;
-        const auto centreIdx = [&](int cx, int cy) {
-            const int lx = cx * kChunkSize + centre;
-            const int ly = cy * kChunkSize + centre;
-            return ly * r.width + lx;
-        };
-        const auto seen = flood(r, centreIdx(0, 0), [](Tile t) { return t == Tile::Empty; });
-        for (int cy = 0; cy < n; ++cy)
-            for (int cx = 0; cx < n; ++cx)
-                EXPECT_TRUE(seen[centreIdx(cx, cy)])
-                    << "seed " << seed << " chamber " << cx << "," << cy << " unreachable";
+        const Region r = materialize(seed, -1, -1, 3, 3);
+        const int reached = floodCount(r, firstWhere(r, notSolid), notSolid);
+        EXPECT_EQ(reached, countIf(r, notSolid)) << "seed " << seed;
     }
 }
 
-TEST(WorldGenTest, EveryChamberIsWalledWithOpenDoorways)
+TEST(WorldGenTest, SeamCrossingsAlignAcrossNeighbours)
 {
-    // The border ring is solid (stone or bomb-through brick) except the four
-    // edge-midpoint doorways, which are always Empty — and at fixed cells, so a chamber's
-    // doorways line up with its neighbours' across every seam.
-    const std::pair<int, int> coords[] = {{0, 0}, {2, 3}, {-5, 1}, {-1, -1}};
-    const int mid = kChunkSize / 2;
-    const int last = kChunkSize - 1;
+    // A chunk's channel openings sit at cells shared with the neighbour's, because the
+    // crossing is a pure function of the SHARED seam identity. So a floor opening on one
+    // chunk's edge always faces a floor opening on the adjoining edge — connectivity by
+    // construction, with no neighbour queries.
+    const std::pair<int, int> coords[] = {{0, 0}, {2, 3}, {-4, 1}, {-1, -1}};
     for (auto [cx, cy] : coords)
     {
         const Chunk c = generateChunk(7, cx, cy);
+        const Chunk east = generateChunk(7, cx + 1, cy);
+        const Chunk south = generateChunk(7, cx, cy + 1);
         for (int i = 0; i < kChunkSize; ++i)
         {
-            const bool topDoor = i == mid;
-            EXPECT_EQ(c.at(i, 0) == Tile::Empty, topDoor) << "top " << i;
-            EXPECT_EQ(c.at(i, last) == Tile::Empty, topDoor) << "bottom " << i;
-            const bool sideDoor = i == mid;
-            EXPECT_EQ(c.at(0, i) == Tile::Empty, sideDoor) << "left " << i;
-            EXPECT_EQ(c.at(last, i) == Tile::Empty, sideDoor) << "right " << i;
+            EXPECT_EQ(c.at(kChunkSize - 1, i) == Tile::Empty, east.at(0, i) == Tile::Empty)
+                << "east seam row " << i << " at " << cx << "," << cy;
+            EXPECT_EQ(c.at(i, kChunkSize - 1) == Tile::Empty, south.at(i, 0) == Tile::Empty)
+                << "south seam col " << i << " at " << cx << "," << cy;
         }
     }
+}
+
+TEST(WorldGenTest, VoidNeverTouchesFloor)
+{
+    // The abyss is always seen behind rock: no floor cell is ever orthogonally adjacent
+    // to a Void cell, so Void can never be walked into, bombed into, or pathed through.
+    const Region r = materialize(3, -1, -1, 3, 3);
+    for (int y = 0; y < r.height; ++y)
+        for (int x = 0; x < r.width; ++x)
+        {
+            const std::size_t idx = static_cast<std::size_t>(y) * r.width + x;
+            if (r.tiles[idx] != Tile::Empty)
+                continue;
+            const std::pair<int, int> nb[] = {{x - 1, y}, {x + 1, y}, {x, y - 1}, {x, y + 1}};
+            for (auto [nx, ny] : nb)
+            {
+                if (nx < 0 || nx >= r.width || ny < 0 || ny >= r.height)
+                    continue;
+                EXPECT_NE(r.tiles[static_cast<std::size_t>(ny) * r.width + nx], Tile::Void)
+                    << "floor " << x << "," << y << " touches void";
+            }
+        }
 }
 
 TEST(WorldGenTest, SpawnPocketIsClear)
@@ -232,10 +239,31 @@ TEST(WorldGenTest, OnlyKnownTiles)
             for (int lx = 0; lx < kChunkSize; ++lx)
             {
                 const Tile t = chunk.at(lx, ly);
-                EXPECT_TRUE(t == Tile::Empty || t == Tile::Wall || t == Tile::Brick)
+                EXPECT_TRUE(t == Tile::Empty || t == Tile::Wall || t == Tile::Brick
+                            || t == Tile::Void)
                     << "tile " << lx << "," << ly << " at chunk " << cx << "," << cy;
             }
     }
+}
+
+TEST(WorldGenTest, TiersEscalateWithDistanceFromOrigin)
+{
+    // Difficulty/theme rises with distance from spawn and never falls as you go outward.
+    EXPECT_EQ(worldTier(0, 0), 0);
+    int prev = 0;
+    for (int ring = 0; ring <= 16; ++ring)
+    {
+        const int tier = worldTier(ring, 0);
+        EXPECT_GE(tier, prev) << "ring " << ring;
+        prev = tier;
+    }
+    EXPECT_GT(worldTier(16, 0), worldTier(0, 0));
+    EXPECT_EQ(worldTier(5, -9), worldTier(9, 0)); // tier follows Chebyshev ring
+
+    std::set<int> tiers;
+    for (int c = 0; c <= 16; ++c)
+        tiers.insert(worldTier(c, c));
+    EXPECT_GE(tiers.size(), 3u);
 }
 
 TEST(WorldGenTest, GoldenSeedsAreStable)
@@ -245,11 +273,11 @@ TEST(WorldGenTest, GoldenSeedsAreStable)
     // are expected to change; an UNINTENDED change is a determinism regression.
     struct Golden { std::uint64_t seed; int cx; int cy; std::uint64_t sig; };
     const Golden golden[] = {
-        {1, 0, 0, 4261681776246883336ULL},
-        {2, 0, 0, 15765506637880251192ULL},
-        {3, 0, 0, 14935172030040336584ULL},
-        {1, 1, 0, 3752843230112716337ULL},
-        {1, -1, -1, 12345632500880365950ULL},
+        {1, 0, 0, 13931823529882201580ULL},
+        {2, 0, 0, 4720691713657001490ULL},
+        {3, 0, 0, 15593927046287269645ULL},
+        {1, 1, 0, 4257396582767645368ULL},
+        {1, -1, -1, 7608924436878331803ULL},
     };
     for (const Golden &g : golden)
         EXPECT_EQ(signature(generateChunk(g.seed, g.cx, g.cy)), g.sig)

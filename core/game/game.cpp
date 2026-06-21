@@ -213,7 +213,7 @@ namespace pyrelite
     bool Game::walkableThroughBricks(int x, int y) const
     {
         return m_terrain->simulationActiveAt(x, y)
-            && m_terrain->at(x, y) != Tile::Wall
+            && !isSolid(m_terrain->at(x, y))
             && !hasBombAt(x, y);
     }
 
@@ -465,7 +465,7 @@ namespace pyrelite
             {
                 const int x = bomb.x + dx[d] * step;
                 const int y = bomb.y + dy[d] * step;
-                if (!m_terrain->inBounds(x, y) || m_terrain->at(x, y) == Tile::Wall)
+                if (!m_terrain->inBounds(x, y) || isSolid(m_terrain->at(x, y)))
                     break;
 
                 addExplosion(x, y);

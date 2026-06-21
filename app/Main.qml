@@ -20,6 +20,18 @@ Window {
     // shrinking the whole board to fit one screen.
     readonly property real cell: 48
 
+    // Region palette by world tier (board.tierAt): floor channel, rock bank, bombable
+    // brick, and the void abyss seen behind the rock. Tiers rise with distance from
+    // spawn, so the world visibly shifts to stranger, harsher hues the farther out the
+    // player travels. The last entry is reused for any tier beyond it.
+    readonly property var tierColors: [
+        { floor: "#3a7d3a", rock: "#555a5e", brick: "#9c6b3c", abyss: "#0e1014" },
+        { floor: "#4a7a3e", rock: "#6b4a3a", brick: "#b5703a", abyss: "#140d0b" },
+        { floor: "#2f6f6a", rock: "#3f5a6e", brick: "#7a9bb0", abyss: "#07111a" },
+        { floor: "#4a3f7a", rock: "#4a3a5e", brick: "#8a4aac", abyss: "#0b0814" },
+        { floor: "#6a2f5a", rock: "#3a2a3e", brick: "#b03b7b", abyss: "#050309" }
+    ]
+
     // Elastic camera follow. The player roams a central DEADZONE box without moving
     // the camera at all; only when they push past its edge does the camera scroll,
     // and it eases there (exponential catch-up) instead of snapping. This replaces
@@ -150,15 +162,19 @@ Window {
                         board.revision
                         return board.tileAt(gx, gy)
                     }
+                    readonly property var pal: root.tierColors[
+                        Math.min(board.tierAt(gx, gy), root.tierColors.length - 1)]
 
                     width: root.cell
                     height: root.cell
                     x: gx * root.cell
                     y: gy * root.cell
-                    color: tile === BoardModel.Wall ? "#555a5e"
-                         : tile === BoardModel.Brick ? "#9c6b3c"
-                         : "#3a7d3a"
-                    border.color: "#2a2a2a"
+                    color: tile === BoardModel.Wall ? pal.rock
+                         : tile === BoardModel.Brick ? pal.brick
+                         : tile === BoardModel.Void ? pal.abyss
+                         : pal.floor
+                    // No grid line over the void, so it reads as continuous open space.
+                    border.color: tile === BoardModel.Void ? pal.abyss : "#2a2a2a"
                     border.width: 1
                 }
             }
