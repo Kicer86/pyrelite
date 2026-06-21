@@ -58,10 +58,18 @@ namespace pyrelite
         return cur;
     }
 
-    // The tile a moving entity occupies: the centre nearest its sub-position.
+    // The tile a moving entity occupies: the centre nearest its sub-position. Uses
+    // floor division, so it stays correct for NEGATIVE positions — the streamed world
+    // is global, and tiles west of / north of the origin have negative coordinates.
+    // (Plain `/` truncates toward zero, which would put tile -1 and tile 0 both at 0,
+    // making the collision tile disagree with the rendered tile: invisible walls.)
     inline int tileOf(int sub)
     {
-        return (sub + kSubcell / 2) / kSubcell;
+        const int shifted = sub + kSubcell / 2;
+        int tile = shifted / kSubcell;
+        if (shifted % kSubcell != 0 && shifted < 0)
+            --tile;
+        return tile;
     }
 
     // The sub-cell bookkeeping every grid-locked mover shares (the player and the
