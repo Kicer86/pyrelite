@@ -11,6 +11,7 @@
 #include <utility>
 
 #include "arena.h"
+#include "bounded_terrain.h"
 #include "movement.h"
 
 namespace pyrelite
@@ -111,13 +112,15 @@ namespace pyrelite
     }
 
     Game::Game(Grid grid, std::uint64_t seed)
-        : m_grid(std::move(grid))
+        : m_columns(grid.width())
+        , m_rows(grid.height())
+        , m_terrain(std::make_unique<BoundedTerrain>(std::move(grid)))
         , m_player(1, 1)
         , m_powerUpRng(seed)
         , m_enemyRng(seed + kEnemySeedOffset)
         , m_perkRng(seed + kPerkSeedOffset)
     {
-        if (!m_grid.inBounds(1, 1) || m_grid.at(1, 1) != Tile::Empty)
+        if (!m_terrain->inBounds(1, 1) || m_terrain->at(1, 1) != Tile::Empty)
             throw std::invalid_argument("Spawn cell (1,1) must be in-bounds and empty");
     }
 
@@ -125,6 +128,11 @@ namespace pyrelite
         : Game(generateArena(width, height, seed), seed)
     {
         spawnEnemies(kEnemyCount);
+    }
+
+    Tile Game::tileAt(int x, int y) const
+    {
+        return m_terrain->at(x, y);
     }
 
     bool Game::hasBombAt(int x, int y) const
@@ -169,19 +177,19 @@ namespace pyrelite
 
     bool Game::walkable(int x, int y) const
     {
-        return m_grid.inBounds(x, y) && m_grid.at(x, y) == Tile::Empty
+        return m_terrain->inBounds(x, y) && m_terrain->at(x, y) == Tile::Empty
             && !hasBombAt(x, y);
     }
 
     bool Game::walkableThroughBricks(int x, int y) const
     {
-        return m_grid.inBounds(x, y) && m_grid.at(x, y) != Tile::Wall
+        return m_terrain->inBounds(x, y) && m_terrain->at(x, y) != Tile::Wall
             && !hasBombAt(x, y);
     }
 
     bool Game::addEnemy(int tileX, int tileY, EnemyType type)
     {
-        if (!m_grid.inBounds(tileX, tileY) || m_grid.at(tileX, tileY) != Tile::Empty)
+        if (!m_terrain->inBounds(tileX, tileY) || m_terrain->at(tileX, tileY) != Tile::Empty)
             return false;
 
         m_enemies.push_back(makeEnemy(type, tileX, tileY));
@@ -197,18 +205,18 @@ namespace pyrelite
     {
         const auto hasEmptyNeighbour = [this](int x, int y)
         {
-            return (m_grid.inBounds(x - 1, y) && m_grid.at(x - 1, y) == Tile::Empty)
-                || (m_grid.inBounds(x + 1, y) && m_grid.at(x + 1, y) == Tile::Empty)
-                || (m_grid.inBounds(x, y - 1) && m_grid.at(x, y - 1) == Tile::Empty)
-                || (m_grid.inBounds(x, y + 1) && m_grid.at(x, y + 1) == Tile::Empty);
+            return (m_terrain->inBounds(x - 1, y) && m_terrain->at(x - 1, y) == Tile::Empty)
+                || (m_terrain->inBounds(x + 1, y) && m_terrain->at(x + 1, y) == Tile::Empty)
+                || (m_terrain->inBounds(x, y - 1) && m_terrain->at(x, y - 1) == Tile::Empty)
+                || (m_terrain->inBounds(x, y + 1) && m_terrain->at(x, y + 1) == Tile::Empty);
         };
 
         std::vector<std::pair<int, int>> candidates;
-        for (int y = 0; y < m_grid.height(); ++y)
+        for (int y = 0; y < m_rows; ++y)
         {
-            for (int x = 0; x < m_grid.width(); ++x)
+            for (int x = 0; x < m_columns; ++x)
             {
-                if (m_grid.at(x, y) != Tile::Empty)
+                if (m_terrain->at(x, y) != Tile::Empty)
                     continue;
                 if (std::abs(x - 1) + std::abs(y - 1) < kEnemySpawnMinDistance)
                     continue;
@@ -416,7 +424,7 @@ namespace pyrelite
             {
                 const int x = bomb.x + dx[d] * step;
                 const int y = bomb.y + dy[d] * step;
-                if (!m_grid.inBounds(x, y) || m_grid.at(x, y) == Tile::Wall)
+                if (!m_terrain->inBounds(x, y) || m_terrain->at(x, y) == Tile::Wall)
                     break;
 
                 addExplosion(x, y);
@@ -428,9 +436,9 @@ namespace pyrelite
                         other.fuseMs = 0;
                 }
 
-                if (m_grid.at(x, y) == Tile::Brick)
+                if (m_terrain->at(x, y) == Tile::Brick)
                 {
-                    m_grid.set(x, y, Tile::Empty);
+                    m_terrain->set(x, y, Tile::Empty);
                     dropPowerUp(x, y);
                     break;
                 }
@@ -510,7 +518,7 @@ namespace pyrelite
         // Gather up to perks.size() landing tiles, nearest first, by BFS over open floor.
         const auto canLand = [this](int x, int y)
         {
-            return m_grid.inBounds(x, y) && m_grid.at(x, y) == Tile::Empty
+            return m_terrain->inBounds(x, y) && m_terrain->at(x, y) == Tile::Empty
                 && !(x == playerX() && y == playerY())
                 && !hasBombAt(x, y) && !hasPowerUpAt(x, y);
         };
@@ -531,7 +539,7 @@ namespace pyrelite
             {
                 const int nx = x + dx[d];
                 const int ny = y + dy[d];
-                if (m_grid.inBounds(nx, ny) && m_grid.at(nx, ny) == Tile::Empty
+                if (m_terrain->inBounds(nx, ny) && m_terrain->at(nx, ny) == Tile::Empty
                     && seen.insert({nx, ny}).second)
                     frontier.push({nx, ny});
             }

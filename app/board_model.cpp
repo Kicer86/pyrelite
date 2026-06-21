@@ -90,12 +90,12 @@ BoardModel::BoardModel(QObject *parent)
 
 int BoardModel::columns() const
 {
-    return m_game.grid().width();
+    return m_game.columns();
 }
 
 int BoardModel::rows() const
 {
-    return m_game.grid().height();
+    return m_game.rows();
 }
 
 qreal BoardModel::playerX() const
@@ -170,7 +170,7 @@ QString BoardModel::version() const
 
 int BoardModel::tileAt(int x, int y) const
 {
-    switch (m_game.grid().at(x, y))
+    switch (m_game.tileAt(x, y))
     {
     case pyrelite::Tile::Wall:
         return Wall;

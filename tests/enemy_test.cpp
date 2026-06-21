@@ -175,7 +175,7 @@ TEST(EnemyTest, ArenaSpawnsEnemiesAwayFromPlayerPocket)
         const int tx = e->subX() / kSubcell;
         const int ty = e->subY() / kSubcell;
         EXPECT_GE(std::abs(tx - 1) + std::abs(ty - 1), 4);
-        EXPECT_EQ(game.grid().at(tx, ty), Tile::Empty);
+        EXPECT_EQ(game.tileAt(tx, ty), Tile::Empty);
     }
 }
 
@@ -186,16 +186,15 @@ TEST(EnemyTest, ArenaSpawnedEnemiesCanMove)
     for (std::uint64_t seed = 1; seed <= 8; ++seed)
     {
         Game game(13, 11, seed);
-        const Grid &g = game.grid();
         for (const auto &e : game.enemies())
         {
             const int tx = e->subX() / kSubcell;
             const int ty = e->subY() / kSubcell;
             const bool canMove =
-                (g.inBounds(tx - 1, ty) && g.at(tx - 1, ty) == Tile::Empty) ||
-                (g.inBounds(tx + 1, ty) && g.at(tx + 1, ty) == Tile::Empty) ||
-                (g.inBounds(tx, ty - 1) && g.at(tx, ty - 1) == Tile::Empty) ||
-                (g.inBounds(tx, ty + 1) && g.at(tx, ty + 1) == Tile::Empty);
+                (game.tileAt(tx - 1, ty) == Tile::Empty) ||
+                (game.tileAt(tx + 1, ty) == Tile::Empty) ||
+                (game.tileAt(tx, ty - 1) == Tile::Empty) ||
+                (game.tileAt(tx, ty + 1) == Tile::Empty);
             EXPECT_TRUE(canMove) << "frozen enemy at (" << tx << "," << ty
                                  << ") seed " << seed;
         }
@@ -367,7 +366,7 @@ TEST(EnemyTest, ChaserCannotCrossTheBrickWallTheGhostPhasesThrough)
         game.update(16);
 
     EXPECT_EQ(game.state(), GameState::Playing); // never crossed to the player
-    EXPECT_EQ(game.grid().at(2, 2), Tile::Brick); // divider untouched
+    EXPECT_EQ(game.tileAt(2, 2), Tile::Brick); // divider untouched
 }
 
 TEST(EnemyTest, ArenaSpawnsAMixOfArchetypes)

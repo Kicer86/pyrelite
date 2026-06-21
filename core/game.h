@@ -10,6 +10,7 @@
 #include "grid.h"
 #include "ienemy.h"
 #include "igame.h"
+#include "iterrain.h"
 #include "movement.h"
 #include "rng.h"
 
@@ -74,7 +75,12 @@ namespace pyrelite
         // Convenience: generate a deterministic arena, then place the player.
         Game(int width, int height, std::uint64_t seed);
 
-        const Grid &grid() const { return m_grid; }
+        // Terrain tile at (x, y); out-of-world reads as Wall. For a bounded arena the
+        // playable extent is columns() x rows(); the streamed world is unbounded (its
+        // view reads a window around the player by global coordinate).
+        Tile tileAt(int x, int y) const;
+        int columns() const { return m_columns; }
+        int rows() const { return m_rows; }
 
         GameState state() const { return m_state; }
 
@@ -171,7 +177,9 @@ namespace pyrelite
         void collectPerkCrystalAtPlayer();
         void applyPerk(PerkType perk);
 
-        Grid m_grid;
+        int m_columns;
+        int m_rows;
+        std::unique_ptr<ITerrain> m_terrain;
         GridMover m_player;
         std::vector<Bomb> m_bombs;
         std::vector<Explosion> m_explosions;
