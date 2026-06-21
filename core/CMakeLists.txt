@@ -3,6 +3,7 @@ add_library(core STATIC
     grid.cpp
     rng.cpp
     arena.cpp
+    world_gen.cpp
     game.cpp
     enemy.cpp
     wanderer.cpp
