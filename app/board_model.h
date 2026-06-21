@@ -5,8 +5,8 @@
 #include <QString>
 #include <QtQml/qqmlregistration.h>
 
-#include "fixed_timestep.h"
-#include "game.h"
+#include "game/fixed_timestep.h"
+#include "game/game.h"
 
 // QML-facing adapter over the core Game: board size + tiles, the player, bombs,
 // and explosion flames. A single changed() signal (plus a bumping revision used
@@ -16,8 +16,6 @@ class BoardModel : public QObject
 {
     Q_OBJECT
     QML_ELEMENT
-    Q_PROPERTY(int columns READ columns CONSTANT)
-    Q_PROPERTY(int rows READ rows CONSTANT)
     Q_PROPERTY(qreal playerX READ playerX NOTIFY changed)
     Q_PROPERTY(qreal playerY READ playerY NOTIFY changed)
     Q_PROPERTY(int bombCount READ bombCount NOTIFY changed)
@@ -44,8 +42,6 @@ public:
 
     explicit BoardModel(QObject *parent = nullptr);
 
-    int columns() const;
-    int rows() const;
     qreal playerX() const;
     qreal playerY() const;
     int bombCount() const;
@@ -89,8 +85,9 @@ public:
     Q_INVOKABLE void setDirection(Direction dir);
     Q_INVOKABLE void clearDirection(Direction dir);
     Q_INVOKABLE void placeBomb();
+    Q_INVOKABLE void setVisibleArea(int minX, int minY, int maxX, int maxY);
     Q_INVOKABLE void update(double deltaMs);
-    // Start a fresh run (same arena) after a win or loss.
+    // Start a fresh run (same seed) after a loss.
     Q_INVOKABLE void restart();
 
 signals:
