@@ -8,6 +8,7 @@ set(tests
     rng_test
     arena_test
     world_gen_test
+    world_test
     game_test
     bomb_test
     explosion_test
