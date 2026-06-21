@@ -20,7 +20,7 @@ namespace
     // "stable starting seed" regression guard.
     std::uint64_t signature(const Chunk &chunk)
     {
-        std::uint64_t h = 1469598103934665603ULL; // FNV-1a offset basis
+        std::uint64_t h = 14695981039346656037ULL; // FNV-1a 64-bit offset basis
         for (int ly = 0; ly < kChunkSize; ++ly)
             for (int lx = 0; lx < kChunkSize; ++lx)
             {
@@ -245,11 +245,11 @@ TEST(WorldGenTest, GoldenSeedsAreStable)
     // are expected to change; an UNINTENDED change is a determinism regression.
     struct Golden { std::uint64_t seed; int cx; int cy; std::uint64_t sig; };
     const Golden golden[] = {
-        {1, 0, 0, 5616208354740426634ULL},
-        {2, 0, 0, 10805064188259329854ULL},
-        {3, 0, 0, 14515038752050282806ULL},
-        {1, 1, 0, 15238055980650280815ULL},
-        {1, -1, -1, 482909254296606036ULL},
+        {1, 0, 0, 4261681776246883336ULL},
+        {2, 0, 0, 15765506637880251192ULL},
+        {3, 0, 0, 14935172030040336584ULL},
+        {1, 1, 0, 3752843230112716337ULL},
+        {1, -1, -1, 12345632500880365950ULL},
     };
     for (const Golden &g : golden)
         EXPECT_EQ(signature(generateChunk(g.seed, g.cx, g.cy)), g.sig)
