@@ -4,6 +4,7 @@ add_library(core STATIC
     rng.cpp
     arena.cpp
     world_gen.cpp
+    world.cpp
     game.cpp
     enemy.cpp
     wanderer.cpp
