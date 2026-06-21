@@ -200,13 +200,15 @@ namespace pyrelite
 
     bool Game::walkable(int x, int y) const
     {
-        return m_terrain->inBounds(x, y) && m_terrain->at(x, y) == Tile::Empty
+        return m_terrain->simulationActiveAt(x, y)
+            && m_terrain->at(x, y) == Tile::Empty
             && !hasBombAt(x, y);
     }
 
     bool Game::walkableThroughBricks(int x, int y) const
     {
-        return m_terrain->inBounds(x, y) && m_terrain->at(x, y) != Tile::Wall
+        return m_terrain->simulationActiveAt(x, y)
+            && m_terrain->at(x, y) != Tile::Wall
             && !hasBombAt(x, y);
     }
 
@@ -217,6 +219,11 @@ namespace pyrelite
 
         m_enemies.push_back(makeEnemy(type, tileX, tileY));
         return true;
+    }
+
+    void Game::setVisibleArea(int minX, int minY, int maxX, int maxY)
+    {
+        m_terrain->setVisibleArea(minX, minY, maxX, maxY);
     }
 
     // Deterministically seed up to count enemies on empty tiles a safe distance from
@@ -277,6 +284,7 @@ namespace pyrelite
             return false;
 
         m_player.snapTo(tx, ty);
+        m_terrain->stream(playerX(), playerY());
         collectPowerUpAtPlayer();
         collectPerkCrystalAtPlayer();
         return true;
@@ -632,6 +640,8 @@ namespace pyrelite
 
         for (auto &enemy : m_enemies)
         {
+            if (!m_terrain->simulationActiveAt(enemy->tileX(), enemy->tileY()))
+                continue;
             if (enemy->integrate(*this, m_enemyRng, deltaMs))
                 changed = true;
         }

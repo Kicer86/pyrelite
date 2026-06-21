@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <map>
+#include <optional>
 #include <utility>
 
 #include "chunk.h"
@@ -38,6 +39,8 @@ namespace pyrelite
 
         // Stream the window around a global tile (the player); ITerrain hook.
         void stream(int centerX, int centerY) override;
+        bool simulationActiveAt(int x, int y) const override;
+        void setVisibleArea(int minX, int minY, int maxX, int maxY) override;
 
         // Keep every chunk within `radius` chunks (Chebyshev) of the centre chunk
         // resident and drop the rest — call as the player moves between chunks.
@@ -51,10 +54,23 @@ namespace pyrelite
         std::size_t deltaCount() const { return m_deltas.size(); }
 
     private:
+        struct ChunkBounds
+        {
+            int minX;
+            int minY;
+            int maxX;
+            int maxY;
+
+            bool operator==(const ChunkBounds &) const = default;
+        };
+
         Chunk &ensureResident(int chunkX, int chunkY) const;
+        void refreshResidency() const;
 
         std::uint64_t m_seed;
         mutable std::map<std::pair<int, int>, Chunk> m_chunks;
         DeltaStore m_deltas;
+        std::optional<std::pair<int, int>> m_simulationCenter;
+        std::optional<ChunkBounds> m_visibleChunks;
     };
 } // namespace pyrelite

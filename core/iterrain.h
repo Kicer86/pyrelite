@@ -29,5 +29,17 @@ namespace pyrelite
         // Keep the terrain around tile (centerX, centerY) resident. A no-op for a fully
         // in-memory bounded arena; the World streams its window here.
         virtual void stream(int /*centerX*/, int /*centerY*/) {}
+
+        // Whether simulation work at this tile is active. Bounded terrain is fully
+        // active; streamed terrain limits entities and pathfinding to the player window.
+        virtual bool simulationActiveAt(int x, int y) const
+        {
+            return inBounds(x, y);
+        }
+
+        // Visible global tile bounds, inclusive. Streamed terrain retains this region
+        // alongside the simulation window; bounded terrain needs no special handling.
+        virtual void setVisibleArea(int /*minX*/, int /*minY*/,
+                                    int /*maxX*/, int /*maxY*/) {}
     };
 } // namespace pyrelite

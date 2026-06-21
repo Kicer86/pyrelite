@@ -3,9 +3,12 @@
 
 #include <cstdint>
 #include <cstdlib>
+#include <utility>
+#include <vector>
 
 #include <gtest/gtest.h>
 
+#include "chunk.h"
 #include "grid.h"
 #include "movement.h"
 
@@ -44,6 +47,28 @@ TEST(StreamedGameTest, PlayerStepsThroughTheSpawnPocket)
     for (int i = 0; i < 40 && game.playerX() == 1; ++i)
         game.update(16);
     EXPECT_EQ(game.playerX(), 2);
+}
+
+TEST(StreamedGameTest, RemoteEnemiesAreNotSimulatedOutsideTheActiveWindow)
+{
+    Game game(1, Game::Streamed{});
+    EXPECT_FALSE(game.walkable(3 * kChunkSize, 0));
+    for (int i = 0; i < 7; ++i)
+        ASSERT_TRUE(game.tryMove(Direction::Down));
+    for (int i = 0; i < 80; ++i)
+        ASSERT_TRUE(game.tryMove(Direction::Right));
+    EXPECT_FALSE(game.walkable(0, 0));
+
+    std::vector<std::pair<int, int>> before;
+    for (const auto &enemy : game.enemies())
+        before.emplace_back(enemy->subX(), enemy->subY());
+
+    game.update(16);
+
+    std::vector<std::pair<int, int>> after;
+    for (const auto &enemy : game.enemies())
+        after.emplace_back(enemy->subX(), enemy->subY());
+    EXPECT_EQ(after, before);
 }
 
 TEST(StreamedGameTest, EndlessRunNeverReportsWon)

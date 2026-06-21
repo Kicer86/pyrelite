@@ -117,6 +117,34 @@ TEST(WorldTest, EnsureWindowLoadsAndUnloadsToBoundResidency)
     EXPECT_EQ(world.residentChunkCount(), 25u); // old chunks dropped, new loaded
 }
 
+TEST(WorldTest, SimulationActivityIsBoundedToThePlayerWindow)
+{
+    World world(1);
+    world.stream(0, 0);
+
+    EXPECT_TRUE(world.simulationActiveAt(2 * kChunkSize, 0));
+    EXPECT_FALSE(world.simulationActiveAt(3 * kChunkSize, 0));
+    EXPECT_FALSE(world.simulationActiveAt(-3 * kChunkSize, 0));
+}
+
+TEST(WorldTest, VisibleChunksAreRetainedAlongsideTheSimulationWindow)
+{
+    World world(1);
+    world.stream(0, 0);
+    EXPECT_EQ(world.residentChunkCount(), 25u);
+
+    const auto far = 100 * kChunkSize;
+    world.setVisibleArea(far, 0, far, 0);
+    EXPECT_EQ(world.residentChunkCount(), 26u);
+    world.stream(0, 0);
+    EXPECT_EQ(world.residentChunkCount(), 26u);
+
+    world.setVisibleArea(0, 0, 0, 0);
+    EXPECT_EQ(world.residentChunkCount(), 25u);
+    world.stream(0, 0);
+    EXPECT_EQ(world.residentChunkCount(), 25u);
+}
+
 TEST(WorldTest, DeltaCountTracksDistinctChanges)
 {
     World world(1);

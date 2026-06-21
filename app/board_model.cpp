@@ -86,16 +86,6 @@ BoardModel::BoardModel(QObject *parent)
 {
 }
 
-int BoardModel::columns() const
-{
-    return m_game.columns();
-}
-
-int BoardModel::rows() const
-{
-    return m_game.rows();
-}
-
 qreal BoardModel::playerX() const
 {
     return m_game.playerSubX() / static_cast<qreal>(pyrelite::kSubcell);
@@ -282,6 +272,11 @@ void BoardModel::clearDirection(Direction dir)
 void BoardModel::placeBomb()
 {
     m_game.queueBomb();
+}
+
+void BoardModel::setVisibleArea(int minX, int minY, int maxX, int maxY)
+{
+    m_game.setVisibleArea(minX, minY, maxX, maxY);
 }
 
 void BoardModel::update(double deltaMs)

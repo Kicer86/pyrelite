@@ -86,12 +86,10 @@ namespace pyrelite
         // "clear all enemies" win — only the World streams under the player each tick).
         Game(std::uint64_t seed, Streamed);
 
-        // Terrain tile at (x, y); out-of-world reads as Wall. For a bounded arena the
-        // playable extent is columns() x rows(); the streamed world is unbounded (its
-        // view reads a window around the player by global coordinate).
+        // Terrain tile at (x, y); out-of-world reads as Wall. Bounded games retain
+        // their fixed extent internally; the streamed world is unbounded and the view
+        // reads a window around the player by global coordinate.
         Tile tileAt(int x, int y) const;
-        int columns() const { return m_columns; }
-        int rows() const { return m_rows; }
 
         GameState state() const { return m_state; }
 
@@ -144,6 +142,10 @@ namespace pyrelite
         // arena spawns enemies deterministically from the seed; this is also the test
         // seam, defaulting to a Wanderer.
         bool addEnemy(int tileX, int tileY, EnemyType type = EnemyType::Wanderer);
+
+        // Retain the view's inclusive global tile rectangle alongside the player-centred
+        // simulation window. A no-op for bounded terrain.
+        void setVisibleArea(int minX, int minY, int maxX, int maxY);
 
         // Discrete one-tile step in dir if the target tile is walkable, snapping the
         // player onto that tile centre. Returns true if the player moved. Handy for
