@@ -5,17 +5,20 @@
 
 namespace pyrelite
 {
-    // Width/height (in tiles) of one world chunk. Even on purpose, so the GLOBAL
-    // even/even pillar lattice stays continuous across chunk seams: a chunk's origin
-    // column and row (chunkX*kChunkSize, chunkY*kChunkSize) are always even, so local
-    // parity matches global parity in every chunk.
+    // Width/height (in tiles) of one world chunk. Even on purpose, so the edge-midpoint
+    // doorway (kChunkSize/2) sits on an exact cell and lines up with the neighbour's
+    // doorway across every seam — the world stays traversable chunk-to-chunk by
+    // construction.
     inline constexpr int kChunkSize = 16;
 
-    // The character of a chunk's interior. The world generator draws one per chunk
-    // from its seed; it sets the brick density and structure. A single switch seam
-    // (mirrors the enemy archetypes) so a new biome is one enum value + one fill rule.
-    enum class Biome { Plaza, Thicket, Corridor, Rooms };
-    inline constexpr int kBiomeCount = 4;
+    // The character of a chunk's chamber. The world generator draws one per chunk from
+    // its seed; it sets the interior cover and layout (a Rooms chunk subdivides into
+    // sub-rooms, Pillars is a pillar field, Thicket a dense brick maze, and so on). A
+    // single switch seam (mirrors the enemy archetypes) so a new kind is one enum value
+    // + one fill rule. Every chamber, whatever its kind, is walled with guaranteed open
+    // doorways and a clear central spine, so connectivity never depends on the kind.
+    enum class Biome { Hall, Rooms, Pillars, Thicket, Plaza };
+    inline constexpr int kBiomeCount = 5;
 
     // A generated kChunkSize x kChunkSize block of the world at chunk coordinate
     // (chunkX, chunkY). Tiles are addressed in LOCAL coordinates [0, kChunkSize):

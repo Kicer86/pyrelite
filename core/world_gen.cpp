@@ -7,20 +7,8 @@ namespace pyrelite
 {
     namespace
     {
-        // Pillar of the indestructible lattice: global even/even cells. Continuous
-        // across chunk seams because kChunkSize is even. `% 2 == 0` classifies
-        // negative coordinates correctly too (-2 % 2 == 0, -1 % 2 == -1).
-        bool isPillar(int globalX, int globalY)
-        {
-            return globalX % 2 == 0 && globalY % 2 == 0;
-        }
-
-        // Every-4th global row, floored so the lane phase is stable across the origin
-        // (a plain `% 4` would shift for negative rows).
-        bool isCorridorLane(int globalY)
-        {
-            return ((globalY % 4) + 4) % 4 == 1;
-        }
+        constexpr int kDoor = kChunkSize / 2;     // edge-midpoint doorway position
+        constexpr int kLast = kChunkSize - 1;     // last local index (the far border)
 
         // A chunk-unique, well-avalanched seed from the world seed and chunk coords,
         // so adjacent chunks look unrelated (a splitmix64 finaliser over a hash mix).
@@ -34,32 +22,149 @@ namespace pyrelite
             return h ^ (h >> 31);
         }
 
-        // Brick fill density (percent) of the non-pillar cells, per biome.
-        int brickPercentFor(Biome biome)
+        bool isBorder(int x, int y) { return x == 0 || y == 0 || x == kLast || y == kLast; }
+        bool isCorner(int x, int y) { return (x == 0 || x == kLast) && (y == 0 || y == kLast); }
+
+        // The four edge-midpoint cells: the doorway gaps. Fixed positions, so a chunk's
+        // doorway always faces its neighbour's — seams connect by construction.
+        bool isDoor(int x, int y)
         {
-            switch (biome)
-            {
-            case Biome::Plaza:    return 22;
-            case Biome::Thicket:  return 85;
-            case Biome::Corridor: return 55;
-            case Biome::Rooms:    return 60;
-            }
-            return 55;
+            return (x == kDoor && (y == 0 || y == kLast)) || (y == kDoor && (x == 0 || x == kLast));
         }
 
-        // How many lattice pillars to keep (percent); open biomes thin them for an
-        // airier feel. Removing a pillar only ever opens space, so it can never seal
-        // a region — the connectivity guarantee is preserved.
-        int pillarKeepPercentFor(Biome biome)
+        // Border cells immediately flanking a doorway — kept as stone so every door has
+        // a solid frame regardless of the random stretch material.
+        bool isDoorJamb(int x, int y)
         {
+            if (x == 0 || x == kLast)
+                return y == kDoor - 1 || y == kDoor + 1;
+            if (y == 0 || y == kLast)
+                return x == kDoor - 1 || x == kDoor + 1;
+            return false;
+        }
+
+        bool onSpine(int x, int y) { return x == kDoor || y == kDoor; }
+
+        // A pillar may only sit on an odd/odd cell of the inner field. Odd/odd cells are
+        // never 8-adjacent to one another, and the inner field keeps them clear of the
+        // border, so isolated indestructible pillars can NEVER ring-in a pocket — the
+        // flood-fill connectivity guarantee holds whatever the random draw. (This is the
+        // deliberate opposite of the old every-even/even lattice: a sparse, jittered
+        // subset, not a wall on one cell in four.)
+        bool isPillarSlot(int x, int y)
+        {
+            return x >= 3 && x <= kChunkSize - 3 && y >= 3 && y <= kChunkSize - 3
+                && x % 2 == 1 && y % 2 == 1;
+        }
+
+        // 1. The chamber wall: a hybrid ring of stone anchors (corners + door frames) and
+        //    brick stretches (bomb-through, so a player can carve extra shortcuts between
+        //    rooms). stoneBias varies the stone/brick mix per chunk.
+        void layPerimeter(Chunk &chunk, Rng &rng, int stoneBias)
+        {
+            for (int y = 0; y < kChunkSize; ++y)
+                for (int x = 0; x < kChunkSize; ++x)
+                {
+                    if (!isBorder(x, y) || isDoor(x, y))
+                        continue;
+                    const bool anchor = isCorner(x, y) || isDoorJamb(x, y);
+                    chunk.set(x, y, anchor || rng.chance(stoneBias) ? Tile::Wall : Tile::Brick);
+                }
+        }
+
+        // 2. The four doorways plus the cell just inside each (the gateway): always Empty,
+        //    so neighbouring chambers connect without bombing.
+        void carveDoorways(Chunk &chunk)
+        {
+            chunk.set(kDoor, 0, Tile::Empty);     chunk.set(kDoor, 1, Tile::Empty);
+            chunk.set(kDoor, kLast, Tile::Empty); chunk.set(kDoor, kLast - 1, Tile::Empty);
+            chunk.set(0, kDoor, Tile::Empty);     chunk.set(1, kDoor, Tile::Empty);
+            chunk.set(kLast, kDoor, Tile::Empty); chunk.set(kLast - 1, kDoor, Tile::Empty);
+        }
+
+        // 3. The connectivity spine: an Empty cross joining all four doorways through the
+        //    centre. This is the navigability backbone — every chamber, whatever its kind,
+        //    is crossable without bombing, and the spines of adjacent chunks meet at the
+        //    doorways into one global lane network.
+        void carveSpine(Chunk &chunk)
+        {
+            for (int i = 1; i < kLast; ++i)
+            {
+                chunk.set(i, kDoor, Tile::Empty);
+                chunk.set(kDoor, i, Tile::Empty);
+            }
+        }
+
+        // A Rooms chamber subdivides: 1-2 internal brick dividers, each with a guaranteed
+        // gap where it crosses the spine, so the sub-rooms stay reachable. Brick (not
+        // stone) on purpose — bomb-through, and it can never seal the flood.
+        void carveSubRooms(Chunk &chunk, Rng &rng)
+        {
+            const int walls = 1 + static_cast<int>(rng.below(2));
+            for (int i = 0; i < walls; ++i)
+            {
+                if (rng.below(2) == 0)
+                {
+                    int wx = 3 + static_cast<int>(rng.below(kChunkSize - 6));
+                    if (wx == kDoor)
+                        ++wx;
+                    for (int y = 1; y < kLast; ++y)
+                        if (y != kDoor)
+                            chunk.set(wx, y, Tile::Brick);
+                }
+                else
+                {
+                    int wy = 3 + static_cast<int>(rng.below(kChunkSize - 6));
+                    if (wy == kDoor)
+                        ++wy;
+                    for (int x = 1; x < kLast; ++x)
+                        if (x != kDoor)
+                            chunk.set(x, wy, Tile::Brick);
+                }
+            }
+        }
+
+        // 4. The interior cover, per chamber kind — the variety axis. Stone only ever
+        //    lands on a pillar slot (isolated by construction); bricks fill the rest. The
+        //    spine and any already-placed divider stay untouched.
+        void fillInterior(Chunk &chunk, Rng &rng, Biome biome)
+        {
+            int stonePct = 0;
+            int brickBase = 0;
+            int brickJitter = 0;
+            bool subdivide = false;
             switch (biome)
             {
-            case Biome::Plaza:    return 55;
-            case Biome::Thicket:  return 100;
-            case Biome::Corridor: return 100;
-            case Biome::Rooms:    return 90;
+            case Biome::Hall:    stonePct = 45; brickBase = 12; brickJitter = 12; break;
+            case Biome::Rooms:   stonePct = 30; brickBase = 25; brickJitter = 14; subdivide = true; break;
+            case Biome::Pillars: stonePct = 85; brickBase = 18; brickJitter = 14; break;
+            case Biome::Thicket: stonePct = 25; brickBase = 60; brickJitter = 18; break;
+            case Biome::Plaza:   stonePct = 10; brickBase = 6;  brickJitter = 10; break;
             }
-            return 100;
+            const int brickPct = brickBase + static_cast<int>(rng.below(brickJitter + 1));
+
+            if (subdivide)
+                carveSubRooms(chunk, rng);
+
+            for (int y = 1; y < kLast; ++y)
+                for (int x = 1; x < kLast; ++x)
+                {
+                    if (onSpine(x, y) || chunk.at(x, y) != Tile::Empty)
+                        continue;
+                    if (isPillarSlot(x, y) && rng.chance(stonePct))
+                        chunk.set(x, y, Tile::Wall);
+                    else if (rng.chance(brickPct))
+                        chunk.set(x, y, Tile::Brick);
+                }
+        }
+
+        // 5. The origin spawn pocket: a guaranteed-clear corner linked up to the spine,
+        //    so the very first run starts in the open and can walk out without bombing.
+        void carveSpawnPocket(Chunk &chunk)
+        {
+            chunk.set(2, 1, Tile::Empty);
+            for (int y = 1; y <= kDoor; ++y)
+                chunk.set(1, y, Tile::Empty); // column from the corner down to the spine
         }
     }
 
@@ -69,69 +174,14 @@ namespace pyrelite
         const Biome biome = static_cast<Biome>(rng.below(kBiomeCount));
         Chunk chunk(chunkX, chunkY, biome);
 
-        const int brickPercent = brickPercentFor(biome);
-        const int pillarKeep = pillarKeepPercentFor(biome);
-        const int originX = chunkX * kChunkSize;
-        const int originY = chunkY * kChunkSize;
+        const int stoneBias = 30 + static_cast<int>(rng.below(40)); // 30..69% stone on stretches
+        layPerimeter(chunk, rng, stoneBias);
+        carveDoorways(chunk);
+        carveSpine(chunk);
+        fillInterior(chunk, rng, biome);
 
-        for (int ly = 0; ly < kChunkSize; ++ly)
-        {
-            for (int lx = 0; lx < kChunkSize; ++lx)
-            {
-                const int gx = originX + lx;
-                const int gy = originY + ly;
-
-                if (isPillar(gx, gy))
-                {
-                    // chance(100) is always true; short-circuit so a non-thinning
-                    // biome draws no RNG here (keeps the stream tight, still exact).
-                    if (pillarKeep >= 100 || rng.chance(pillarKeep))
-                        chunk.set(lx, ly, Tile::Wall);
-                    // else thinned -> left Empty (open)
-                }
-                else if (rng.chance(brickPercent))
-                {
-                    chunk.set(lx, ly, Tile::Brick);
-                }
-                // else Empty (the Grid default)
-            }
-        }
-
-        // Corridor biome: carve clear horizontal lanes so it reads as corridors, not
-        // uniform noise. Forcing cells Empty never seals anything.
-        if (biome == Biome::Corridor)
-        {
-            for (int ly = 0; ly < kChunkSize; ++ly)
-            {
-                if (!isCorridorLane(originY + ly))
-                    continue;
-                for (int lx = 0; lx < kChunkSize; ++lx)
-                    if (!isPillar(originX + lx, originY + ly))
-                        chunk.set(lx, ly, Tile::Empty);
-            }
-        }
-
-        // Rooms biome: carve one fully open chamber (pillars included) amid the
-        // bricks. Clearing tiles only opens space, so connectivity is unaffected.
-        if (biome == Biome::Rooms)
-        {
-            const int roomW = 4 + static_cast<int>(rng.below(4)); // 4..7
-            const int roomH = 4 + static_cast<int>(rng.below(4));
-            const int roomX = static_cast<int>(rng.below(kChunkSize - roomW));
-            const int roomY = static_cast<int>(rng.below(kChunkSize - roomH));
-            for (int ly = roomY; ly < roomY + roomH; ++ly)
-                for (int lx = roomX; lx < roomX + roomW; ++lx)
-                    chunk.set(lx, ly, Tile::Empty);
-        }
-
-        // Keep the world origin's spawn pocket clear so the player is never boxed in
-        // at the start (matches the classic top-left opening).
         if (chunkX == 0 && chunkY == 0)
-        {
-            chunk.set(1, 1, Tile::Empty);
-            chunk.set(2, 1, Tile::Empty);
-            chunk.set(1, 2, Tile::Empty);
-        }
+            carveSpawnPocket(chunk);
 
         return chunk;
     }
