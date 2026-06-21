@@ -63,7 +63,7 @@ Game makeUMaze()
     for (int y = 0; y < 7; ++y)
         for (int x = 0; x < 7; ++x)
             g.set(x, y, Tile::Wall);
-    for (const auto [x, y] : {std::pair{1, 1}, {1, 2}, {1, 3},
+    for (const auto &[x, y] : {std::pair{1, 1}, {1, 2}, {1, 3},
              {2, 3}, {3, 3}, {3, 2}, {3, 1}})
         g.set(x, y, Tile::Empty);
     return Game(g);

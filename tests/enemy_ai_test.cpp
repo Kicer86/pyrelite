@@ -30,8 +30,8 @@ public:
     FakeWorld(int playerTileX, int playerTileY)
         : m_px(playerTileX), m_py(playerTileY) {}
 
-    void block(int x, int y) { m_blocked.emplace(x, y); } // a solid wall (stops everyone)
-    void brick(int x, int y) { m_bricks.emplace(x, y); }  // soft (only a Ghost passes)
+    void block(int x, int y) { m_blocked.emplace(x, y); } // solid wall
+    void brick(int x, int y) { m_bricks.emplace(x, y); }  // Ghost passes
 
     bool walkable(int x, int y) const override
     {
@@ -214,7 +214,7 @@ TEST(EnemyAiTest, HunterReachesThePlayerAroundAWallWithoutRng)
 TEST(EnemyAiTest, HunterRoamsWhenNoPathToThePlayerExists)
 {
     FakeWorld world(1, 10); // player far below, but sealed off in a 1-wide pocket
-    for (const auto [x, y] : {std::pair{1, 0}, {0, 1}, {2, 1},
+    for (const auto &[x, y] : {std::pair{1, 0}, {0, 1}, {2, 1},
              {0, 2}, {2, 2}, {1, 3}})
         world.block(x, y); // reachable area is just (1,1)-(1,2)
     ScriptedRng rng;
