@@ -75,6 +75,17 @@ namespace pyrelite
         // Convenience: generate a deterministic arena, then place the player.
         Game(int width, int height, std::uint64_t seed);
 
+        // Tag selecting the infinite streamed-world constructor (the play mode), vs the
+        // bounded Grid constructors above (fixed arenas / headless tests).
+        struct Streamed
+        {
+        };
+
+        // Build on the infinite streamed World: the player spawns at the origin pocket
+        // (1, 1), a starter set of enemies seeds nearby, and the run is endless (no
+        // "clear all enemies" win — only the World streams under the player each tick).
+        Game(std::uint64_t seed, Streamed);
+
         // Terrain tile at (x, y); out-of-world reads as Wall. For a bounded arena the
         // playable extent is columns() x rows(); the streamed world is unbounded (its
         // view reads a window around the player by global coordinate).
@@ -165,6 +176,7 @@ namespace pyrelite
         bool integrateMovement(int deltaMs);
         bool resolveDeaths();
         void spawnEnemies(int count);
+        void spawnEnemiesIn(int minX, int minY, int maxX, int maxY, int count);
         int movementUnits(int deltaMs) const;
         void explode(const Bomb &bomb);
         void addExplosion(int x, int y);
@@ -196,6 +208,10 @@ namespace pyrelite
         Rng m_enemyRng;
         Rng m_perkRng;
         GameState m_state = GameState::Playing;
+        // Whether clearing every enemy wins. True for a bounded arena (a finite roster);
+        // false for the endless streamed world (enemies are open-ended, so there is no
+        // "all" to clear) — the run then ends only on death.
+        bool m_winnable = true;
         std::optional<Direction> m_heldDir;
         bool m_pendingBomb = false;
     };

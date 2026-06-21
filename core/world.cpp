@@ -10,6 +10,10 @@ namespace pyrelite
 {
     namespace
     {
+        // Chunks kept resident around the player: a (2r+1)² window. Generous enough to
+        // cover the viewport plus margin so streaming is never visible at the edges.
+        constexpr int kStreamRadius = 2;
+
         // Floor division: rounds toward negative infinity, unlike C++'s truncating
         // `/`. Needed so a global tile maps to the SAME chunk on both sides of zero
         // (e.g. tile -1 belongs to chunk -1, not chunk 0).
@@ -31,7 +35,12 @@ namespace pyrelite
         return floorDiv(globalTile, kChunkSize);
     }
 
-    Chunk &World::ensureResident(int chunkX, int chunkY)
+    void World::stream(int centerX, int centerY)
+    {
+        ensureWindow(chunkCoord(centerX), chunkCoord(centerY), kStreamRadius);
+    }
+
+    Chunk &World::ensureResident(int chunkX, int chunkY) const
     {
         const auto key = std::make_pair(chunkX, chunkY);
         const auto it = m_chunks.find(key);
@@ -52,7 +61,7 @@ namespace pyrelite
         return m_chunks.emplace(key, std::move(chunk)).first->second;
     }
 
-    Tile World::at(int globalX, int globalY)
+    Tile World::at(int globalX, int globalY) const
     {
         const int cx = chunkCoord(globalX);
         const int cy = chunkCoord(globalY);
@@ -69,7 +78,7 @@ namespace pyrelite
         m_deltas.record(globalX, globalY, tile);
     }
 
-    void World::ensureWindow(int centerChunkX, int centerChunkY, int radius)
+    void World::ensureWindow(int centerChunkX, int centerChunkY, int radius) const
     {
         for (int cy = centerChunkY - radius; cy <= centerChunkY + radius; ++cy)
             for (int cx = centerChunkX - radius; cx <= centerChunkX + radius; ++cx)

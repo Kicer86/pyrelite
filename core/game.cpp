@@ -13,6 +13,7 @@
 #include "arena.h"
 #include "bounded_terrain.h"
 #include "movement.h"
+#include "world.h"
 
 namespace pyrelite
 {
@@ -32,6 +33,11 @@ namespace pyrelite
         // they must spawn from the player pocket so the opening is never a death trap.
         constexpr int kEnemyCount = 5;
         constexpr int kEnemySpawnMinDistance = 4;
+
+        // The streamed world seeds its starter enemies within this many tiles of the
+        // origin spawn pocket, so the player meets foes at once without scanning the
+        // (infinite) world. Per-chunk spawning across the whole world comes later.
+        constexpr int kStreamSpawnAreaTiles = 24;
 
         // Of those, the archetype quota: a greedy Chaser, a ricocheting Bouncer, a
         // pathfinding Hunter and a wall-passing Ghost, with the rest left as random
@@ -130,6 +136,23 @@ namespace pyrelite
         spawnEnemies(kEnemyCount);
     }
 
+    Game::Game(std::uint64_t seed, Streamed)
+        : m_columns(0)
+        , m_rows(0)
+        , m_terrain(std::make_unique<World>(seed))
+        , m_player(1, 1)
+        , m_powerUpRng(seed)
+        , m_enemyRng(seed + kEnemySeedOffset)
+        , m_perkRng(seed + kPerkSeedOffset)
+    {
+        m_winnable = false; // endless world: the run ends only on death
+
+        // Materialize the spawn window, then seed a starter set of enemies near the
+        // origin pocket (which generateChunk guarantees is open at (1, 1)).
+        m_terrain->stream(playerX(), playerY());
+        spawnEnemiesIn(0, 0, kStreamSpawnAreaTiles, kStreamSpawnAreaTiles, kEnemyCount);
+    }
+
     Tile Game::tileAt(int x, int y) const
     {
         return m_terrain->at(x, y);
@@ -203,6 +226,11 @@ namespace pyrelite
     // then Ghosts — and the rest roam as Wanderers.
     void Game::spawnEnemies(int count)
     {
+        spawnEnemiesIn(0, 0, m_columns, m_rows, count);
+    }
+
+    void Game::spawnEnemiesIn(int minX, int minY, int maxX, int maxY, int count)
+    {
         const auto hasEmptyNeighbour = [this](int x, int y)
         {
             return (m_terrain->inBounds(x - 1, y) && m_terrain->at(x - 1, y) == Tile::Empty)
@@ -212,9 +240,9 @@ namespace pyrelite
         };
 
         std::vector<std::pair<int, int>> candidates;
-        for (int y = 0; y < m_rows; ++y)
+        for (int y = minY; y < maxY; ++y)
         {
-            for (int x = 0; x < m_columns; ++x)
+            for (int x = minX; x < maxX; ++x)
             {
                 if (m_terrain->at(x, y) != Tile::Empty)
                     continue;
@@ -361,7 +389,7 @@ namespace pyrelite
             return true;
         }
 
-        if (killedEnemy && m_enemies.empty())
+        if (m_winnable && killedEnemy && m_enemies.empty())
         {
             m_state = GameState::Won;
             return true;
@@ -593,6 +621,10 @@ namespace pyrelite
             return false;
         if (m_state != GameState::Playing)
             return false; // frozen once the run has ended
+
+        // Keep the streamed world resident around the player (a no-op for a bounded
+        // arena). Done before movement so this tick's reads hit loaded chunks.
+        m_terrain->stream(playerX(), playerY());
 
         bool changed = drainBomb();
         if (integrateMovement(deltaMs))
