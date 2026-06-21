@@ -64,6 +64,9 @@ Window {
     FrameAnimation {
         running: true
         onTriggered: {
+            board.setVisibleArea(terrain.originX, terrain.originY,
+                                 terrain.originX + terrain.cols - 1,
+                                 terrain.originY + terrain.rows - 1)
             board.update(frameTime * 1000)
             // Ease the camera toward its deadzone-constrained target. The factor is
             // derived from frameTime so the catch-up rate is frame-rate independent.
