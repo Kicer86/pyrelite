@@ -5,6 +5,8 @@
 #include <cstdint>
 
 #include "version.h"
+#include "world/chunk.h"
+#include "world/world_gen.h"
 
 namespace
 {
@@ -164,10 +166,17 @@ int BoardModel::tileAt(int x, int y) const
         return Wall;
     case pyrelite::Tile::Brick:
         return Brick;
+    case pyrelite::Tile::Void:
+        return Void;
     case pyrelite::Tile::Empty:
         break;
     }
     return Empty;
+}
+
+int BoardModel::tierAt(int x, int y) const
+{
+    return pyrelite::worldTier(pyrelite::chunkOf(x), pyrelite::chunkOf(y));
 }
 
 int BoardModel::bombX(int index) const

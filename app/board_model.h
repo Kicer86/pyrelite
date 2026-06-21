@@ -31,7 +31,7 @@ class BoardModel : public QObject
     Q_PROPERTY(QString version READ version CONSTANT)
 
 public:
-    enum Tile { Empty, Wall, Brick };
+    enum Tile { Empty, Wall, Brick, Void };
     Q_ENUM(Tile)
     enum PowerUp { BombLimitPowerUp, BombRangePowerUp, SpeedPowerUp };
     Q_ENUM(PowerUp)
@@ -57,6 +57,9 @@ public:
     QString version() const;
 
     Q_INVOKABLE int tileAt(int x, int y) const;
+    // The world tier (difficulty/theme band) of a global tile, rising with distance
+    // from spawn. The view maps it to a region palette; the policy lives once in core.
+    Q_INVOKABLE int tierAt(int x, int y) const;
     Q_INVOKABLE int bombX(int index) const;
     Q_INVOKABLE int bombY(int index) const;
     Q_INVOKABLE int explosionX(int index) const;

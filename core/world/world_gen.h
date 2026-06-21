@@ -12,14 +12,25 @@ namespace pyrelite
     // chunk on every platform, so the streamed world is reproducible and any chunk can
     // be materialized on demand without its neighbours.
     //
-    // Each chunk is a CHAMBER: a hybrid wall ring (stone anchors + brick stretches) with
-    // a guaranteed open doorway at the midpoint of every edge, and an Empty central
-    // spine joining the four doorways. The doorways sit at fixed cells, so a chamber's
-    // spine meets its neighbours' across every seam — the world is traversable
-    // chunk-to-chunk WITHOUT bombing, by construction. The chamber's kind (Biome) then
-    // decorates the interior for variety: open hall, subdivided rooms, pillar field,
-    // brick thicket, plaza. Interior stone only ever lands on isolated pillar slots, so
-    // it can never seal a pocket; the whole world's non-Wall tiles stay one connected
-    // component (a brick is bomb-through, so it never partitions anything either).
+    // Each chunk is carved like a stretch of RIVER: a meandering navigable CHANNEL of
+    // Empty tiles, cut through solid rock, with occasional wider chambers along it. The
+    // rock immediately lining the channel is a thin BANK (Wall, with some bomb-through
+    // Brick for shortcuts and power-ups); everything deeper than the bank is VOID — the
+    // abyss the channel was cut through, visible behind the rock but never reachable.
+    //
+    // Connectivity is guaranteed BY CONSTRUCTION without neighbour queries: where the
+    // channel crosses each chunk edge is a pure function of the world seed and the
+    // SHARED seam identity, so a chunk's crossing always lines up with its neighbour's
+    // across every seam. Inside the chunk every crossing is carved to a common hub, so
+    // the whole world's channel is one connected component — walkable chunk-to-chunk
+    // with no bombing. (Bricks are bomb-through and only ever border the channel, so
+    // they never partition it either.)
     Chunk generateChunk(std::uint64_t seed, int chunkX, int chunkY);
+
+    // The difficulty/theme TIER of a chunk, rising with distance from the origin so the
+    // world grows tighter, emptier and more fantastic the farther the player travels.
+    // This is the single escalation-policy seam: it currently steps in radial rings, but
+    // changing the policy (e.g. to a smooth gradient) is a change to this one function
+    // plus the tier table in world_gen.cpp. The view reads it to pick a region palette.
+    int worldTier(int chunkX, int chunkY);
 } // namespace pyrelite
