@@ -118,6 +118,11 @@ namespace pyrelite
     }
 
     Game::Game(Grid grid, std::uint64_t seed)
+        : Game(std::move(grid), seed, Objective::ClearEnemies)
+    {
+    }
+
+    Game::Game(Grid grid, std::uint64_t seed, Objective objective)
         : m_columns(grid.width())
         , m_rows(grid.height())
         , m_terrain(std::make_unique<BoundedTerrain>(std::move(grid)))
@@ -125,6 +130,7 @@ namespace pyrelite
         , m_powerUpRng(seed)
         , m_enemyRng(seed + kEnemySeedOffset)
         , m_perkRng(seed + kPerkSeedOffset)
+        , m_objective(objective)
     {
         if (!m_terrain->inBounds(1, 1) || m_terrain->at(1, 1) != Tile::Empty)
             throw std::invalid_argument("Spawn cell (1,1) must be in-bounds and empty");
@@ -144,9 +150,8 @@ namespace pyrelite
         , m_powerUpRng(seed)
         , m_enemyRng(seed + kEnemySeedOffset)
         , m_perkRng(seed + kPerkSeedOffset)
+        , m_objective(Objective::Endless)
     {
-        m_winnable = false; // endless world: the run ends only on death
-
         // Materialize the spawn window, then seed a starter set of enemies near the
         // origin pocket (which generateChunk guarantees is open at (1, 1)).
         m_terrain->stream(playerX(), playerY());
@@ -397,7 +402,7 @@ namespace pyrelite
             return true;
         }
 
-        if (m_winnable && killedEnemy && m_enemies.empty())
+        if (m_objective == Objective::ClearEnemies && killedEnemy && m_enemies.empty())
         {
             m_state = GameState::Won;
             return true;

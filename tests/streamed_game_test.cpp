@@ -25,17 +25,19 @@ TEST(StreamedGameTest, SpawnsPlayerAtOriginPocket)
 
 TEST(StreamedGameTest, SeedsStarterEnemiesNearOrigin)
 {
-    Game game(1, Game::Streamed{});
-    EXPECT_GT(game.enemies().size(), 0u);
-    EXPECT_LE(game.enemies().size(), 5u);
-    for (const auto &enemy : game.enemies())
+    for (std::uint64_t seed = 1; seed <= 8; ++seed)
     {
-        EXPECT_GE(enemy->tileX(), 0);
-        EXPECT_GE(enemy->tileY(), 0);
-        EXPECT_LT(enemy->tileX(), 24);
-        EXPECT_LT(enemy->tileY(), 24);
-        // A safe distance from the player pocket, so the opening is not a death trap.
-        EXPECT_GE(std::abs(enemy->tileX() - 1) + std::abs(enemy->tileY() - 1), 4);
+        Game game(seed, Game::Streamed{});
+        ASSERT_EQ(game.enemies().size(), 5u) << "seed " << seed;
+        for (const auto &enemy : game.enemies())
+        {
+            EXPECT_GE(enemy->tileX(), 0);
+            EXPECT_GE(enemy->tileY(), 0);
+            EXPECT_LT(enemy->tileX(), 24);
+            EXPECT_LT(enemy->tileY(), 24);
+            // A safe distance from the player pocket, so the opening is not a death trap.
+            EXPECT_GE(std::abs(enemy->tileX() - 1) + std::abs(enemy->tileY() - 1), 4);
+        }
     }
 }
 
@@ -71,14 +73,21 @@ TEST(StreamedGameTest, RemoteEnemiesAreNotSimulatedOutsideTheActiveWindow)
     EXPECT_EQ(after, before);
 }
 
-TEST(StreamedGameTest, EndlessRunNeverReportsWon)
+TEST(StreamedGameTest, EndlessObjectiveDoesNotWinWhenTheEnemyRosterIsCleared)
 {
-    // There is no "clear all enemies" in an unbounded world, so the run never wins —
-    // it only ever stays Playing or ends in Lost.
-    Game game(1, Game::Streamed{});
-    for (int i = 0; i < 200; ++i)
-    {
-        game.update(16);
-        ASSERT_NE(game.state(), GameState::Won);
-    }
+    Grid grid(7, 5);
+    grid.set(3, 0, Tile::Wall);
+    grid.set(3, 2, Tile::Wall);
+    grid.set(4, 1, Tile::Wall);
+    Game game(std::move(grid), 1, Game::Objective::Endless);
+    ASSERT_TRUE(game.addEnemy(3, 1));
+    game.setBombRange(2);
+    ASSERT_TRUE(game.placeBomb());
+    ASSERT_TRUE(game.tryMove(Direction::Down));
+    ASSERT_TRUE(game.tryMove(Direction::Right));
+
+    game.update(2000);
+
+    EXPECT_TRUE(game.enemies().empty());
+    EXPECT_EQ(game.state(), GameState::Playing);
 }

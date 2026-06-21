@@ -68,9 +68,15 @@ namespace pyrelite
     class Game : public IGame
     {
     public:
+        // Run-completion rule, independent of terrain shape: finite arenas win when
+        // their roster is cleared; endless runs continue until death.
+        enum class Objective { ClearEnemies, Endless };
+
         // Build from an existing grid; player starts centred on the spawn tile (1, 1).
         explicit Game(Grid grid);
         Game(Grid grid, std::uint64_t seed);
+        // Explicit objective overload also keeps run rules testable on a small grid.
+        Game(Grid grid, std::uint64_t seed, Objective objective);
 
         // Convenience: generate a deterministic arena, then place the player.
         Game(int width, int height, std::uint64_t seed);
@@ -210,10 +216,7 @@ namespace pyrelite
         Rng m_enemyRng;
         Rng m_perkRng;
         GameState m_state = GameState::Playing;
-        // Whether clearing every enemy wins. True for a bounded arena (a finite roster);
-        // false for the endless streamed world (enemies are open-ended, so there is no
-        // "all" to clear) — the run then ends only on death.
-        bool m_winnable = true;
+        Objective m_objective = Objective::ClearEnemies;
         std::optional<Direction> m_heldDir;
         bool m_pendingBomb = false;
     };
