@@ -20,15 +20,50 @@ Window {
     // shrinking the whole board to fit one screen.
     readonly property real cell: 48
 
-    // Camera offset for one axis: keep the player centred in the viewport, but
-    // never scroll past the arena edge (clamp to [viewport - content, 0]). If the
-    // board is smaller than the viewport on this axis, centre it instead. Driven by
-    // the player's fractional tile position, so the follow is as smooth as movement.
-    function cameraOffset(viewport, content, playerTile) {
+    // Elastic camera follow. The player roams a central DEADZONE box without moving
+    // the camera at all; only when they push past its edge does the camera scroll,
+    // and it eases there (exponential catch-up) instead of snapping. This replaces
+    // the Slice-A hard player-lock, which glued the world to the player every step
+    // and felt stiff. Both knobs below are pure feel; view-only, core untouched.
+    readonly property real deadzone: 0.4   // fraction of the viewport the box spans
+    readonly property real followTau: 0.12 // catch-up time constant (s); larger = floatier
+
+    // Current camera offset, the source of truth: smoothed each frame (in the tick
+    // below) toward cameraTarget. Initialised by recenter() once the view is sized.
+    property real viewX: 0
+    property real viewY: 0
+
+    // Desired camera offset for one axis, given where the camera is NOW: keep the
+    // player inside the central deadzone box, pushing the camera only when they
+    // cross its edge, then clamp so the view never scrolls past the arena border.
+    // If the board is smaller than the viewport on this axis, centre it instead.
+    function cameraTarget(offset, viewport, content, playerTile) {
         if (content <= viewport)
             return (viewport - content) / 2
-        const centred = viewport / 2 - (playerTile + 0.5) * cell
-        return Math.max(viewport - content, Math.min(0, centred))
+        const screen = (playerTile + 0.5) * cell + offset // player centre on screen
+        const half = viewport * deadzone / 2
+        let target = offset
+        if (screen < viewport / 2 - half)
+            target = offset + (viewport / 2 - half) - screen
+        else if (screen > viewport / 2 + half)
+            target = offset - (screen - (viewport / 2 + half))
+        return Math.max(viewport - content, Math.min(0, target))
+    }
+
+    // Centred-on-player offset for one axis (the old hard-lock formula), clamped to
+    // the arena border. Used only to snap the camera on load/restart so it doesn't
+    // glide across the whole arena from a stale position.
+    function centeredOffset(viewport, content, playerTile) {
+        if (content <= viewport)
+            return (viewport - content) / 2
+        return Math.max(viewport - content,
+                        Math.min(0, viewport / 2 - (playerTile + 0.5) * cell))
+    }
+
+    // Snap the camera straight to the player (no easing), for load and restart.
+    function recenter() {
+        viewX = centeredOffset(scene.width, boardView.width, board.playerX)
+        viewY = centeredOffset(scene.height, boardView.height, board.playerY)
     }
 
     // Drives bomb fuses + explosions in the core, once per rendered frame.
@@ -36,7 +71,14 @@ Window {
     // so it keeps ticking even when idle — unlike a QTimer.
     FrameAnimation {
         running: true
-        onTriggered: board.update(frameTime * 1000)
+        onTriggered: {
+            board.update(frameTime * 1000)
+            // Ease the camera toward its deadzone-constrained target. The factor is
+            // derived from frameTime so the catch-up rate is frame-rate independent.
+            const k = 1 - Math.exp(-frameTime / root.followTau)
+            root.viewX += (root.cameraTarget(root.viewX, scene.width, boardView.width, board.playerX) - root.viewX) * k
+            root.viewY += (root.cameraTarget(root.viewY, scene.height, boardView.height, board.playerY) - root.viewY) * k
+        }
     }
 
     // Full-window scene: owns keyboard focus and routes input. On web the canvas
@@ -58,7 +100,7 @@ Window {
             case Qt.Key_Left:  case Qt.Key_A: board.setDirection(BoardModel.Left);  event.accepted = true; break
             case Qt.Key_Right: case Qt.Key_D: board.setDirection(BoardModel.Right); event.accepted = true; break
             case Qt.Key_Space:                board.placeBomb();                    event.accepted = true; break
-            case Qt.Key_R:                    board.restart();                      event.accepted = true; break
+            case Qt.Key_R:                    board.restart(); root.recenter();     event.accepted = true; break
             }
         }
 
@@ -82,10 +124,12 @@ Window {
             width: board.columns * root.cell
             height: board.rows * root.cell
 
-            // Camera follow: re-evaluates as the player moves (playerX/Y notify),
-            // clamped so the view never scrolls past the arena border.
-            x: root.cameraOffset(scene.width, width, board.playerX)
-            y: root.cameraOffset(scene.height, height, board.playerY)
+            // Camera follow: the smoothed offset maintained in the per-frame tick.
+            x: root.viewX
+            y: root.viewY
+
+            // Start centred on the spawn rather than easing in from (0, 0).
+            Component.onCompleted: root.recenter()
 
             Grid {
                 anchors.fill: parent
@@ -303,7 +347,7 @@ Window {
 
             MouseArea {
                 anchors.fill: parent
-                onClicked: { board.restart(); scene.forceActiveFocus() }
+                onClicked: { board.restart(); root.recenter(); scene.forceActiveFocus() }
             }
 
             Column {
