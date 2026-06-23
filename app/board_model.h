@@ -130,4 +130,8 @@ private:
     int m_activeDir = -1;
     std::map<std::pair<int, int>, pyrelite::Chunk> m_previewChunks;
     std::optional<std::pair<int, int>> m_previewCenterChunk;
+    // One-entry memo for previewTileAt (see board_model.cpp). std::map keeps element
+    // pointers stable across inserts, and generatePreviewAround clears this on growth.
+    mutable std::optional<std::pair<int, int>> m_previewLookupKey;
+    mutable const pyrelite::Chunk *m_previewLookupChunk = nullptr;
 };

@@ -211,11 +211,19 @@ int BoardModel::previewTileAt(int x, int y) const
 {
     const int chunkX = pyrelite::chunkOf(x);
     const int chunkY = pyrelite::chunkOf(y);
-    const auto it = m_previewChunks.find({chunkX, chunkY});
-    if (it == m_previewChunks.end())
+    const auto key = std::make_pair(chunkX, chunkY);
+    // The Canvas paints a chunk's tiles contiguously, so resolve the chunk once and
+    // reuse it instead of doing a map lookup for every tile in the same chunk.
+    if (!m_previewLookupKey || *m_previewLookupKey != key)
+    {
+        const auto it = m_previewChunks.find(key);
+        m_previewLookupChunk = it == m_previewChunks.end() ? nullptr : &it->second;
+        m_previewLookupKey = key;
+    }
+    if (m_previewLookupChunk == nullptr)
         return Unknown;
-    return toViewTile(it->second.at(x - chunkX * pyrelite::kChunkSize,
-                                    y - chunkY * pyrelite::kChunkSize));
+    return toViewTile(m_previewLookupChunk->at(x - chunkX * pyrelite::kChunkSize,
+                                               y - chunkY * pyrelite::kChunkSize));
 }
 
 bool BoardModel::previewChunkGenerated(int chunkX, int chunkY) const
@@ -245,7 +253,13 @@ void BoardModel::generatePreviewAround(int centerX, int centerY)
             generated = true;
         }
     if (generated)
+    {
+        // A previously-unknown chunk may now exist; drop the cached lookup so it is
+        // re-resolved against the grown set.
+        m_previewLookupKey.reset();
+        m_previewLookupChunk = nullptr;
         emitChanged();
+    }
 }
 
 int BoardModel::tierAt(int x, int y) const
