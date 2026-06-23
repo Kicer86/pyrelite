@@ -32,6 +32,7 @@ class BoardModel : public QObject
     Q_PROPERTY(int xpToNextLevel READ xpToNextLevel NOTIFY changed)
     Q_PROPERTY(int perkCrystalCount READ perkCrystalCount NOTIFY changed)
     Q_PROPERTY(int previewChunkCount READ previewChunkCount NOTIFY changed)
+    Q_PROPERTY(int chunkTiles READ chunkTiles CONSTANT)
     Q_PROPERTY(int revision READ revision NOTIFY changed)
     Q_PROPERTY(State state READ state NOTIFY changed)
     Q_PROPERTY(QString version READ version CONSTANT)
@@ -59,6 +60,9 @@ public:
     int xpToNextLevel() const;
     int perkCrystalCount() const;
     int previewChunkCount() const { return static_cast<int>(m_previewChunks.size()); }
+    // Tiles per world chunk, so the preview's chunk grid stays aligned with core
+    // generation without the view hard-coding the size.
+    int chunkTiles() const { return pyrelite::kChunkSize; }
     int revision() const { return m_revision; }
     State state() const;
     QString version() const;

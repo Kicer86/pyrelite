@@ -24,7 +24,7 @@ Window {
     readonly property real minPreviewCell: 8
     readonly property real maxPreviewCell: 96
     property real cell: defaultCell
-    readonly property int previewChunkTiles: 16
+    readonly property int previewChunkTiles: board.chunkTiles
     readonly property color unknownTerrain: "#11151d"
     readonly property color unknownGrid: "#263142"
 
