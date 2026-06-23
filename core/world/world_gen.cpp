@@ -709,10 +709,13 @@ namespace pyrelite
             const StyleParams style = styleFor(biome, tier);
             const Point here{zoneX, zoneY};
             const bool isOrigin = zoneX == 0 && zoneY == 0;
-            const SpawnLayout spawn = spawnLayout(seed);
+            SpawnLayout spawn{};
             std::vector<Point> nodes;
             if (isOrigin)
+            {
+                spawn = spawnLayout(seed);
                 nodes.push_back(spawn.exitAnchor);
+            }
 
             const Point west{zoneX - 1, zoneY};
             if (zonesConnected(seed, here, west))
