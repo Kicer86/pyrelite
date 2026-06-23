@@ -824,6 +824,37 @@ namespace pyrelite
             placeFloorIslands(zone, seed, style);
             return zone;
         }
+
+        // generateChunk builds a whole zone and extracts one of its 16 chunks, so
+        // materializing a zone chunk by chunk would re-run the same generation 16 times
+        // (and chunk eviction/reload would repeat it). A small FIFO of recently built
+        // zones collapses that to once per zone. Keyed on the full (seed, zoneX, zoneY)
+        // input it preserves the pure contract: identical input always yields identical
+        // output, so callers and tests cannot observe the cache except as speed. Access
+        // is single-threaded (Qt main thread / single-threaded WASM / sequential tests),
+        // so no synchronisation is needed. The capacity comfortably exceeds the zones a
+        // streaming window (kStreamRadius) or preview window can touch at once.
+        const GeneratedZone &cachedZone(std::uint64_t seed, int zoneX, int zoneY)
+        {
+            struct Entry
+            {
+                std::uint64_t seed;
+                int zoneX;
+                int zoneY;
+                GeneratedZone zone;
+            };
+            constexpr std::size_t kZoneCacheCapacity = 16;
+            static std::vector<Entry> cache;
+
+            for (const Entry &entry : cache)
+                if (entry.seed == seed && entry.zoneX == zoneX && entry.zoneY == zoneY)
+                    return entry.zone;
+
+            if (cache.size() >= kZoneCacheCapacity)
+                cache.erase(cache.begin());
+            cache.push_back({seed, zoneX, zoneY, generateZone(seed, zoneX, zoneY)});
+            return cache.back().zone;
+        }
     }
 
     int worldTier(int chunkX, int chunkY)
@@ -835,7 +866,7 @@ namespace pyrelite
     {
         const int zoneX = zoneOfChunk(chunkX);
         const int zoneY = zoneOfChunk(chunkY);
-        const GeneratedZone zone = generateZone(seed, zoneX, zoneY);
+        const GeneratedZone &zone = cachedZone(seed, zoneX, zoneY);
         Chunk chunk(chunkX, chunkY, zone.biome());
 
         const int localChunkX = chunkX - zoneMinChunk(zoneX);
