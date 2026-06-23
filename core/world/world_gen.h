@@ -4,9 +4,16 @@
 #include <cstdint>
 
 #include "world/chunk.h"
+#include "world/zone.h"
 
 namespace pyrelite
 {
+    // Deterministically generate the whole ZONE at (zoneX, zoneY). This is the expensive
+    // step; slice its chunks with Zone::chunk. Callers that materialize many chunks of a
+    // zone should cache the Zone (see ZoneCache) rather than calling generateChunk per
+    // chunk, which rebuilds the zone every time. Pure: identical input, identical zone.
+    Zone generateZone(std::uint64_t seed, int zoneX, int zoneY);
+
     // Deterministically generate the world chunk at (chunkX, chunkY) for a world seed.
     // Pure function: the same (seed, chunkX, chunkY) always yields the identical chunk
     // on every platform, so the streamed world is reproducible and any chunk can be

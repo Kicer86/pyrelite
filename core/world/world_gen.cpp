@@ -13,10 +13,8 @@ namespace pyrelite
 {
     namespace
     {
-        constexpr int kZoneChunks = 4;
-        constexpr int kZoneSize = kZoneChunks * kChunkSize;
+        // kZoneChunks and kZoneSize are public (world/zone.h).
         constexpr int kZoneLast = kZoneSize - 1;
-        constexpr int kZoneHalfChunks = kZoneChunks / 2;
         constexpr int kZoneCells = kZoneSize * kZoneSize;
         constexpr int kProvinceZones = 2;
         constexpr int kSpawnSealInnerRadius = 6;
@@ -47,16 +45,6 @@ namespace pyrelite
             const int q = value / divisor;
             const int r = value % divisor;
             return r < 0 ? q - 1 : q;
-        }
-
-        int zoneOfChunk(int chunkCoord)
-        {
-            return floorDiv(chunkCoord + kZoneHalfChunks, kZoneChunks);
-        }
-
-        int zoneMinChunk(int zoneCoord)
-        {
-            return zoneCoord * kZoneChunks - kZoneHalfChunks;
         }
 
         // The difficulty/theme tier of a whole generation zone, rising with the zone's
@@ -191,45 +179,13 @@ namespace pyrelite
             return style;
         }
 
-        class GeneratedZone
-        {
-        public:
-            GeneratedZone(int zoneX, int zoneY, Biome biome)
-                : m_zoneX(zoneX)
-                , m_zoneY(zoneY)
-                , m_biome(biome)
-            {
-                m_tiles.fill(Tile::Wall);
-            }
-
-            int zoneX() const { return m_zoneX; }
-            int zoneY() const { return m_zoneY; }
-            Biome biome() const { return m_biome; }
-
-            Tile at(int x, int y) const
-            {
-                return m_tiles[static_cast<std::size_t>(y) * kZoneSize + x];
-            }
-
-            void set(int x, int y, Tile tile)
-            {
-                m_tiles[static_cast<std::size_t>(y) * kZoneSize + x] = tile;
-            }
-
-        private:
-            int m_zoneX;
-            int m_zoneY;
-            Biome m_biome;
-            std::array<Tile, kZoneCells> m_tiles;
-        };
-
-        void carveCell(GeneratedZone &zone, int x, int y)
+        void carveCell(Zone &zone, int x, int y)
         {
             if (x >= 1 && x < kZoneLast && y >= 1 && y < kZoneLast)
                 zone.set(x, y, Tile::Empty);
         }
 
-        void carveDisc(GeneratedZone &zone, int centerX, int centerY, int radius)
+        void carveDisc(Zone &zone, int centerX, int centerY, int radius)
         {
             const int radiusSquared = radius * radius;
             for (int dy = -radius; dy <= radius; ++dy)
@@ -238,7 +194,7 @@ namespace pyrelite
                         carveCell(zone, centerX + dx, centerY + dy);
         }
 
-        void carveEllipse(GeneratedZone &zone, int centerX, int centerY,
+        void carveEllipse(Zone &zone, int centerX, int centerY,
                           int radiusX, int radiusY)
         {
             const int radiusXSquared = radiusX * radiusX;
@@ -250,7 +206,7 @@ namespace pyrelite
                         carveCell(zone, centerX + dx, centerY + dy);
         }
 
-        void carveCapsule(GeneratedZone &zone, Point start, Point end, int radius)
+        void carveCapsule(Zone &zone, Point start, Point end, int radius)
         {
             const int steps = std::max(std::abs(end.x - start.x), std::abs(end.y - start.y));
             if (steps == 0)
@@ -286,14 +242,14 @@ namespace pyrelite
             return {{kSpawn.x + offset.x, kSpawn.y + offset.y}};
         }
 
-        void carveSpawnChamber(GeneratedZone &zone, const SpawnLayout &layout)
+        void carveSpawnChamber(Zone &zone, const SpawnLayout &layout)
         {
             carveEllipse(zone, kSpawn.x, kSpawn.y, 5, 4);
             carveDisc(zone, kSpawn.x - 2, kSpawn.y + 1, 3);
             carveCapsule(zone, kSpawn, layout.exitAnchor, 1);
         }
 
-        void sealSpawnChamber(GeneratedZone &zone, const SpawnLayout &layout)
+        void sealSpawnChamber(Zone &zone, const SpawnLayout &layout)
         {
             const int innerSquared = kSpawnSealInnerRadius * kSpawnSealInnerRadius;
             const int outerSquared = kSpawnSealOuterRadius * kSpawnSealOuterRadius;
@@ -323,7 +279,7 @@ namespace pyrelite
                 && distanceSquared <= kSpawnSealOuterRadius * kSpawnSealOuterRadius;
         }
 
-        std::array<bool, kZoneCells> floorReachableFromSpawn(const GeneratedZone &zone)
+        std::array<bool, kZoneCells> floorReachableFromSpawn(const Zone &zone)
         {
             std::array<bool, kZoneCells> reached{};
             std::vector<int> queue{kSpawn.y * kZoneSize + kSpawn.x};
@@ -348,7 +304,7 @@ namespace pyrelite
         // Sealing the chamber can cut a corridor that happened to cross its protected
         // ring. Repair such components through rock outside the ring before banks are
         // classified, preserving both global connectivity and the single entrance.
-        void connectFloorOutsideSpawnRing(GeneratedZone &zone)
+        void connectFloorOutsideSpawnRing(Zone &zone)
         {
             while (true)
             {
@@ -421,7 +377,7 @@ namespace pyrelite
             }
         }
 
-        void carvePortalVertical(GeneratedZone &zone, int edgeX, const Portal &portal)
+        void carvePortalVertical(Zone &zone, int edgeX, const Portal &portal)
         {
             const int innerX = edgeX == 0 ? 1 : kZoneLast - 1;
             for (int offset = -portal.halfWidth; offset <= portal.halfWidth; ++offset)
@@ -431,7 +387,7 @@ namespace pyrelite
             }
         }
 
-        void carvePortalHorizontal(GeneratedZone &zone, int edgeY, const Portal &portal)
+        void carvePortalHorizontal(Zone &zone, int edgeY, const Portal &portal)
         {
             const int innerY = edgeY == 0 ? 1 : kZoneLast - 1;
             for (int offset = -portal.halfWidth; offset <= portal.halfWidth; ++offset)
@@ -450,7 +406,7 @@ namespace pyrelite
         // Integer quadratic Bezier rasterisation produces a smooth bend while keeping
         // seeded worlds bit-identical across platforms. Circular stamps hide the tile
         // staircase and let the passage breathe between narrow and broad stretches.
-        void carveCurvedCorridor(GeneratedZone &zone, Rng &rng, Point start, Point end,
+        void carveCurvedCorridor(Zone &zone, Rng &rng, Point start, Point end,
                                  const StyleParams &style)
         {
             const int dx = end.x - start.x;
@@ -495,7 +451,7 @@ namespace pyrelite
             }
         }
 
-        void carveOrganicRoom(GeneratedZone &zone, Rng &rng, Point center, Biome biome)
+        void carveOrganicRoom(Zone &zone, Rng &rng, Point center, Biome biome)
         {
             const int shape = static_cast<int>(rng.below(3));
             if (shape == 0)
@@ -537,7 +493,7 @@ namespace pyrelite
             }
         }
 
-        void connectNodes(GeneratedZone &zone, Rng &rng, const std::vector<Point> &nodes,
+        void connectNodes(Zone &zone, Rng &rng, const std::vector<Point> &nodes,
                           const StyleParams &style)
         {
             if (nodes.size() < 2)
@@ -587,7 +543,7 @@ namespace pyrelite
             }
         }
 
-        bool touchesFloor(const GeneratedZone &zone, int x, int y)
+        bool touchesFloor(const Zone &zone, int x, int y)
         {
             return (x > 0 && zone.at(x - 1, y) == Tile::Empty)
                 || (x < kZoneLast && zone.at(x + 1, y) == Tile::Empty)
@@ -598,7 +554,7 @@ namespace pyrelite
         // A 3/4 chamfer distance is a cheap integer approximation of Euclidean distance.
         // Unlike the old Manhattan flood it follows rounded chambers without producing
         // conspicuous diamond banks.
-        void applyBanks(GeneratedZone &zone, Rng &rng, const StyleParams &style)
+        void applyBanks(Zone &zone, Rng &rng, const StyleParams &style)
         {
             constexpr int kFar = 1'000'000;
             std::array<int, kZoneCells> distance;
@@ -649,7 +605,7 @@ namespace pyrelite
                 }
         }
 
-        bool openThreeByThree(const GeneratedZone &zone, int centerX, int centerY)
+        bool openThreeByThree(const Zone &zone, int centerX, int centerY)
         {
             for (int y = centerY - 1; y <= centerY + 1; ++y)
                 for (int x = centerX - 1; x <= centerX + 1; ++x)
@@ -658,7 +614,7 @@ namespace pyrelite
             return true;
         }
 
-        bool brickNearby(const GeneratedZone &zone, int centerX, int centerY)
+        bool brickNearby(const Zone &zone, int centerX, int centerY)
         {
             for (int y = centerY - 2; y <= centerY + 2; ++y)
                 for (int x = centerX - 2; x <= centerX + 2; ++x)
@@ -667,7 +623,7 @@ namespace pyrelite
             return false;
         }
 
-        void placeFloorIslands(GeneratedZone &zone, std::uint64_t seed,
+        void placeFloorIslands(Zone &zone, std::uint64_t seed,
                                const StyleParams &style)
         {
             const int globalMinX = zone.zoneX() * kZoneSize - kZoneSize / 2;
@@ -700,10 +656,10 @@ namespace pyrelite
                 0x8CB92BA72F3D8DD7ULL) % kBiomeCount);
         }
 
-        GeneratedZone generateZone(std::uint64_t seed, int zoneX, int zoneY)
+        Zone buildZone(std::uint64_t seed, int zoneX, int zoneY)
         {
             const Biome biome = biomeForZone(seed, zoneX, zoneY);
-            GeneratedZone zone(zoneX, zoneY, biome);
+            Zone zone(zoneX, zoneY, biome);
             Rng rng(coordinateValue(seed, zoneX, zoneY, 0x4F1BBCDCBFA54001ULL));
             const int tier = tierForZone(zoneX, zoneY);
             const StyleParams style = styleFor(biome, tier);
@@ -827,58 +783,24 @@ namespace pyrelite
             placeFloorIslands(zone, seed, style);
             return zone;
         }
+    }
 
-        // generateChunk builds a whole zone and extracts one of its 16 chunks, so
-        // materializing a zone chunk by chunk would re-run the same generation 16 times
-        // (and chunk eviction/reload would repeat it). A small FIFO of recently built
-        // zones collapses that to once per zone. Keyed on the full (seed, zoneX, zoneY)
-        // input it preserves the pure contract: identical input always yields identical
-        // output, so callers and tests cannot observe the cache except as speed. Access
-        // is single-threaded (Qt main thread / single-threaded WASM / sequential tests),
-        // so no synchronisation is needed. The capacity comfortably exceeds the zones a
-        // streaming window (kStreamRadius) or preview window can touch at once.
-        const GeneratedZone &cachedZone(std::uint64_t seed, int zoneX, int zoneY)
-        {
-            struct Entry
-            {
-                std::uint64_t seed;
-                int zoneX;
-                int zoneY;
-                GeneratedZone zone;
-            };
-            constexpr std::size_t kZoneCacheCapacity = 16;
-            static std::vector<Entry> cache;
-
-            for (const Entry &entry : cache)
-                if (entry.seed == seed && entry.zoneX == zoneX && entry.zoneY == zoneY)
-                    return entry.zone;
-
-            if (cache.size() >= kZoneCacheCapacity)
-                cache.erase(cache.begin());
-            cache.push_back({seed, zoneX, zoneY, generateZone(seed, zoneX, zoneY)});
-            return cache.back().zone;
-        }
+    Zone generateZone(std::uint64_t seed, int zoneX, int zoneY)
+    {
+        return buildZone(seed, zoneX, zoneY);
     }
 
     int worldTier(int chunkX, int chunkY)
     {
-        return tierForZone(zoneOfChunk(chunkX), zoneOfChunk(chunkY));
+        return tierForZone(Zone::ofChunk(chunkX), Zone::ofChunk(chunkY));
     }
 
+    // Pure per-chunk generation: build the containing zone and slice the chunk out. A
+    // caller materializing many chunks of a zone should hold a ZoneCache so the zone is
+    // built once instead of once per chunk.
     Chunk generateChunk(std::uint64_t seed, int chunkX, int chunkY)
     {
-        const int zoneX = zoneOfChunk(chunkX);
-        const int zoneY = zoneOfChunk(chunkY);
-        const GeneratedZone &zone = cachedZone(seed, zoneX, zoneY);
-        Chunk chunk(chunkX, chunkY, zone.biome());
-
-        const int localChunkX = chunkX - zoneMinChunk(zoneX);
-        const int localChunkY = chunkY - zoneMinChunk(zoneY);
-        const int sourceX = localChunkX * kChunkSize;
-        const int sourceY = localChunkY * kChunkSize;
-        for (int y = 0; y < kChunkSize; ++y)
-            for (int x = 0; x < kChunkSize; ++x)
-                chunk.set(x, y, zone.at(sourceX + x, sourceY + y));
-        return chunk;
+        return generateZone(seed, Zone::ofChunk(chunkX), Zone::ofChunk(chunkY))
+            .chunk(chunkX, chunkY);
     }
 } // namespace pyrelite

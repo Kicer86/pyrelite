@@ -249,7 +249,7 @@ void BoardModel::generatePreviewAround(int centerX, int centerY)
             const auto key = std::make_pair(chunkX, chunkY);
             if (m_previewChunks.contains(key))
                 continue;
-            m_previewChunks.emplace(key, pyrelite::generateChunk(kSeed, chunkX, chunkY));
+            m_previewChunks.emplace(key, m_previewZones.chunk(kSeed, chunkX, chunkY));
             generated = true;
         }
     if (generated)

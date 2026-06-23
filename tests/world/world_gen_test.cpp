@@ -11,15 +11,15 @@
 #include <gtest/gtest.h>
 
 #include "world/chunk.h"
+#include "world/zone_cache.h"
 #include "grid/grid.h"
 
 using namespace pyrelite;
 
 namespace
 {
-    constexpr int kZoneChunks = 4;
-    constexpr int kZoneTiles = kZoneChunks * kChunkSize;
-    constexpr int kSpawnInOriginZone = kZoneTiles / 2 + 1;
+    // kZoneChunks / kZoneSize are the public zone dimensions (world/zone.h).
+    constexpr int kSpawnInOriginZone = kZoneSize / 2 + 1;
 
     // Fold a chunk's tiles into a 64-bit signature (FNV-1a, order-sensitive) so a
     // generated layout can be pinned exactly across builds and platforms — the
@@ -474,4 +474,19 @@ TEST(WorldGenTest, GoldenSeedsAreStable)
     for (const Golden &g : golden)
         EXPECT_EQ(signature(generateChunk(g.seed, g.cx, g.cy)), g.sig)
             << "seed " << g.seed << " chunk " << g.cx << "," << g.cy;
+}
+
+TEST(WorldGenTest, ZoneCacheMatchesDirectGeneration)
+{
+    // A ZoneCache is a pure memo: a chunk sliced from it must equal generateChunk for
+    // every chunk, in any access order and across repeats, so callers can cache zones
+    // without changing the world. Covers four chunks of one zone, a cross-zone jump and
+    // a repeat (cache hit) plus an eviction past capacity.
+    ZoneCache cache(2);
+    const std::pair<int, int> coords[] = {
+        {0, 0}, {1, 0}, {2, 0}, {3, 0}, {-1, 0}, {0, 1}, {7, -5}, {7, -5}, {-9, 9},
+    };
+    for (auto [cx, cy] : coords)
+        EXPECT_EQ(signature(cache.chunk(9, cx, cy)), signature(generateChunk(9, cx, cy)))
+            << "chunk " << cx << "," << cy;
 }

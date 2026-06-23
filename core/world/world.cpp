@@ -4,8 +4,6 @@
 #include <algorithm>
 #include <cstdlib>
 
-#include "world/world_gen.h"
-
 namespace pyrelite
 {
     namespace
@@ -77,7 +75,7 @@ namespace pyrelite
         if (it != m_chunks.end())
             return it->second;
 
-        Chunk chunk = generateChunk(m_seed, chunkX, chunkY);
+        Chunk chunk = m_zoneCache.chunk(m_seed, chunkX, chunkY);
 
         // Reapply any recorded player changes that fall inside this chunk, so a
         // reloaded chunk reflects what the player did, not a fresh generation.

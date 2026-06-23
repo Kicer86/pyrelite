@@ -12,6 +12,7 @@
 #include "game/fixed_timestep.h"
 #include "game/game.h"
 #include "world/chunk.h"
+#include "world/zone_cache.h"
 
 // QML-facing adapter over the core Game: board size + tiles, the player, bombs,
 // and explosion flames. A single changed() signal (plus a bumping revision used
@@ -130,6 +131,8 @@ private:
     int m_activeDir = -1;
     std::map<std::pair<int, int>, pyrelite::Chunk> m_previewChunks;
     std::optional<std::pair<int, int>> m_previewCenterChunk;
+    // Builds each preview zone once instead of rebuilding it for every chunk it owns.
+    pyrelite::ZoneCache m_previewZones;
     // One-entry memo for previewTileAt (see board_model.cpp). std::map keeps element
     // pointers stable across inserts, and generatePreviewAround clears this on growth.
     mutable std::optional<std::pair<int, int>> m_previewLookupKey;
