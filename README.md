@@ -23,8 +23,9 @@ Run the desktop app with a free-flying terrain camera:
 ./build/app/pyrelite --preview
 ```
 
-Use WASD or the arrow keys to fly and `R` to return to the spawn. Gameplay is paused
-while previewing, and terrain continues streaming at the camera position.
+Use WASD or the arrow keys to fly, `+`/`-` to zoom, and `R` to return to the spawn.
+Gameplay is paused while previewing. Zooming out expands the visible tile window, so
+additional terrain is generated and streamed instead of scaling a fixed snapshot.
 
 ## Tests
 

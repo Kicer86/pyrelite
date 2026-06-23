@@ -17,10 +17,13 @@ Window {
 
     BoardModel { id: board }
 
-    // Fixed tile size in pixels so an arena can be larger than the window; the
-    // camera (boardView below) scrolls to keep the player in view, rather than
-    // shrinking the whole board to fit one screen.
-    readonly property real cell: 48
+    // Tile size in pixels. Gameplay keeps the default scale; preview mode may change
+    // it, which increases/decreases the repeater's tile window and therefore streams
+    // real additional terrain rather than scaling a fixed world snapshot.
+    readonly property real defaultCell: 48
+    readonly property real minPreviewCell: 8
+    readonly property real maxPreviewCell: 96
+    property real cell: defaultCell
 
     // Region palette by world tier (board.tierAt): floor channel, rock bank, bombable
     // brick, and the void abyss seen behind the rock. Tiers rise with distance from
@@ -76,6 +79,21 @@ Window {
     function recenter() {
         viewX = centeredOffset(scene.width, board.playerX)
         viewY = centeredOffset(scene.height, board.playerY)
+    }
+
+    function zoomPreview(factor) {
+        const oldCell = cell
+        const nextCell = Math.max(minPreviewCell, Math.min(maxPreviewCell, oldCell * factor))
+        if (Math.abs(nextCell - oldCell) < 0.001)
+            return
+
+        // Preserve the world coordinate under the centre of the viewport. Changing
+        // cell then makes the terrain repeater request a larger/smaller real tile area.
+        const centerWorldX = (scene.width / 2 - viewX) / oldCell
+        const centerWorldY = (scene.height / 2 - viewY) / oldCell
+        cell = nextCell
+        viewX = scene.width / 2 - centerWorldX * cell
+        viewY = scene.height / 2 - centerWorldY * cell
     }
 
     function setPreviewKey(key, pressed) {
@@ -154,7 +172,11 @@ Window {
                 return
             }
             if (root.previewMode) {
-                if (event.key === Qt.Key_R)
+                if (event.key === Qt.Key_Plus || event.key === Qt.Key_Equal)
+                    root.zoomPreview(1.25)
+                else if (event.key === Qt.Key_Minus || event.key === Qt.Key_Underscore)
+                    root.zoomPreview(0.8)
+                else if (event.key === Qt.Key_R)
                     root.recenter()
                 event.accepted = true
                 return
@@ -426,7 +448,8 @@ Window {
             Text {
                 id: previewLabel
                 anchors.centerIn: parent
-                text: "PREVIEW · WASD / arrows · R resets view"
+                text: "PREVIEW · WASD / arrows · + / − zoom · R resets view · "
+                    + Math.round(root.cell / root.defaultCell * 100) + "% zoom"
                 color: "#9be3ff"
                 font.pixelSize: 15
                 font.bold: true
