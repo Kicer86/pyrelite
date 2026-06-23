@@ -29,8 +29,10 @@ namespace pyrelite
 
     // The difficulty/theme TIER of a chunk, rising with distance from the origin so the
     // world grows tighter, emptier and more fantastic the farther the player travels.
-    // This is the single escalation-policy seam: it currently steps in radial rings, but
-    // changing the policy (e.g. to a smooth gradient) is a change to this one function
-    // plus the tier table in world_gen.cpp. The view reads it to pick a region palette.
+    // Tier is a property of the whole generation ZONE the chunk belongs to, so it is the
+    // single escalation seam: the generator (style parameters) and the view (region
+    // palette) read the exact same value and can never disagree about how far out a
+    // chunk is. Changing the policy (e.g. to a smooth gradient) is a change to the one
+    // shared tier function in world_gen.cpp.
     int worldTier(int chunkX, int chunkY);
 } // namespace pyrelite

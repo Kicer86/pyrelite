@@ -444,7 +444,7 @@ TEST(WorldGenTest, TiersEscalateWithDistanceFromOrigin)
         prev = tier;
     }
     EXPECT_GT(worldTier(16, 0), worldTier(0, 0));
-    EXPECT_EQ(worldTier(5, -9), worldTier(9, 0)); // tier follows Chebyshev ring
+    EXPECT_EQ(worldTier(5, -9), worldTier(9, 0)); // tier follows the zone's Chebyshev ring
 
     std::set<int> tiers;
     for (int c = 0; c <= 16; ++c)

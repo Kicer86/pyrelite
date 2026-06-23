@@ -22,7 +22,6 @@ namespace pyrelite
         constexpr int kSpawnSealInnerRadius = 6;
         constexpr int kSpawnSealOuterRadius = 13;
 
-        constexpr int kRingsPerTier = 2;
         constexpr int kMaxTier = 4;
 
         std::uint64_t mix64(std::uint64_t h)
@@ -58,6 +57,15 @@ namespace pyrelite
         int zoneMinChunk(int zoneCoord)
         {
             return zoneCoord * kZoneChunks - kZoneHalfChunks;
+        }
+
+        // The difficulty/theme tier of a whole generation zone, rising with the zone's
+        // Chebyshev distance from the origin. This is THE escalation policy: both the
+        // generated style (styleFor) and the view palette (worldTier) read it, so they
+        // can never diverge. Change the cadence here and the whole world follows.
+        int tierForZone(int zoneX, int zoneY)
+        {
+            return std::min(std::max(std::abs(zoneX), std::abs(zoneY)), kMaxTier);
         }
 
         struct Point
@@ -697,7 +705,7 @@ namespace pyrelite
             const Biome biome = biomeForZone(seed, zoneX, zoneY);
             GeneratedZone zone(zoneX, zoneY, biome);
             Rng rng(coordinateValue(seed, zoneX, zoneY, 0x4F1BBCDCBFA54001ULL));
-            const int tier = std::min(std::max(std::abs(zoneX), std::abs(zoneY)), kMaxTier);
+            const int tier = tierForZone(zoneX, zoneY);
             const StyleParams style = styleFor(biome, tier);
             const Point here{zoneX, zoneY};
             const bool isOrigin = zoneX == 0 && zoneY == 0;
@@ -820,8 +828,7 @@ namespace pyrelite
 
     int worldTier(int chunkX, int chunkY)
     {
-        const int ring = std::max(std::abs(chunkX), std::abs(chunkY));
-        return std::min(ring / kRingsPerTier, kMaxTier);
+        return tierForZone(zoneOfChunk(chunkX), zoneOfChunk(chunkY));
     }
 
     Chunk generateChunk(std::uint64_t seed, int chunkX, int chunkY)
