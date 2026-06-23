@@ -2,6 +2,8 @@
 #include "world/world_gen.h"
 
 #include <cstdint>
+#include <cstdlib>
+#include <iterator>
 #include <set>
 #include <utility>
 #include <vector>
@@ -16,6 +18,8 @@ using namespace pyrelite;
 namespace
 {
     constexpr int kZoneChunks = 4;
+    constexpr int kZoneTiles = kZoneChunks * kChunkSize;
+    constexpr int kSpawnInOriginZone = kZoneTiles / 2 + 1;
 
     // Fold a chunk's tiles into a 64-bit signature (FNV-1a, order-sensitive) so a
     // generated layout can be pinned exactly across builds and platforms — the
@@ -137,6 +141,21 @@ namespace
         }
         return crossings;
     }
+
+    std::vector<std::pair<int, int>> squarePerimeter(int centerX, int centerY, int radius)
+    {
+        std::vector<std::pair<int, int>> cells;
+        cells.reserve(static_cast<std::size_t>(radius) * 8);
+        for (int x = centerX - radius; x < centerX + radius; ++x)
+            cells.emplace_back(x, centerY - radius);
+        for (int y = centerY - radius; y < centerY + radius; ++y)
+            cells.emplace_back(centerX + radius, y);
+        for (int x = centerX + radius; x > centerX - radius; --x)
+            cells.emplace_back(x, centerY + radius);
+        for (int y = centerY + radius; y > centerY - radius; --y)
+            cells.emplace_back(centerX - radius, y);
+        return cells;
+    }
 }
 
 TEST(WorldGenTest, SameSeedAndCoordsSameChunk)
@@ -163,6 +182,22 @@ TEST(WorldGenTest, NeighbouringChunksDiffer)
         signature(generateChunk(1, 1, 1)),
     };
     EXPECT_GT(sigs.size(), 1u);
+}
+
+TEST(WorldGenTest, GenerationOrderDoesNotAffectChunks)
+{
+    const std::pair<int, int> coords[] = {
+        {0, 0}, {1, 0}, {-1, 0}, {0, 1}, {0, -1}, {4, -3}, {-5, 2},
+    };
+    std::vector<std::uint64_t> expected;
+    for (const auto &[x, y] : coords)
+        expected.push_back(signature(generateChunk(73, x, y)));
+
+    for (auto it = std::rbegin(coords); it != std::rend(coords); ++it)
+        (void) generateChunk(73, it->first, it->second);
+
+    for (std::size_t i = 0; i < std::size(coords); ++i)
+        EXPECT_EQ(signature(generateChunk(73, coords[i].first, coords[i].second)), expected[i]);
 }
 
 TEST(WorldGenTest, AllStylesAppearAcrossChunks)
@@ -286,6 +321,18 @@ TEST(WorldGenTest, ChunkEdgesInsideZoneAreNotRockFrames)
     }
 }
 
+TEST(WorldGenTest, CaveNetworkDoesNotCollapseIntoAnOpenField)
+{
+    for (std::uint64_t seed = 1; seed <= 12; ++seed)
+    {
+        const Region zone = materialize(seed, zoneMinChunk(0), zoneMinChunk(0),
+                                        kZoneChunks, kZoneChunks);
+        const int floor = countIf(zone, isEmpty);
+        EXPECT_GT(floor * 100, static_cast<int>(zone.tiles.size()) * 10) << "seed " << seed;
+        EXPECT_LT(floor * 100, static_cast<int>(zone.tiles.size()) * 42) << "seed " << seed;
+    }
+}
+
 TEST(WorldGenTest, VoidNeverTouchesFloor)
 {
     // The abyss is always seen behind rock: no floor cell is ever orthogonally adjacent
@@ -317,6 +364,55 @@ TEST(WorldGenTest, SpawnPocketIsClear)
         EXPECT_EQ(origin.at(2, 1), Tile::Empty) << "seed " << seed;
         EXPECT_EQ(origin.at(1, 2), Tile::Empty) << "seed " << seed;
     }
+}
+
+TEST(WorldGenTest, SpawnChamberHasOneExitInVariedDirections)
+{
+    constexpr int kExitRingRadius = 9;
+    const auto perimeter = squarePerimeter(kSpawnInOriginZone, kSpawnInOriginZone,
+                                           kExitRingRadius);
+    bool foundDiagonalExit = false;
+    for (std::uint64_t seed = 1; seed <= 32; ++seed)
+    {
+        const Region zone = materialize(seed, zoneMinChunk(0), zoneMinChunk(0),
+                                        kZoneChunks, kZoneChunks);
+        std::vector<bool> open;
+        open.reserve(perimeter.size());
+        int openCount = 0;
+        int sumDx = 0;
+        int sumDy = 0;
+        for (const auto &[x, y] : perimeter)
+        {
+            const Tile tile = zone.tiles[static_cast<std::size_t>(y) * zone.width + x];
+            const bool isOpen = tile == Tile::Empty;
+            open.push_back(isOpen);
+            if (isOpen)
+            {
+                ++openCount;
+                sumDx += x - kSpawnInOriginZone;
+                sumDy += y - kSpawnInOriginZone;
+            }
+            else
+                EXPECT_EQ(tile, Tile::Wall) << "seed " << seed << " at " << x << "," << y;
+        }
+
+        int runs = 0;
+        for (std::size_t i = 0; i < open.size(); ++i)
+            if (open[i] && !open[(i + open.size() - 1) % open.size()])
+                ++runs;
+
+        EXPECT_EQ(runs, 1) << "seed " << seed;
+        EXPECT_GE(openCount, 1) << "seed " << seed;
+        EXPECT_LE(openCount, 8) << "seed " << seed;
+        foundDiagonalExit |= openCount > 0
+            && std::abs(sumDx) * 2 > openCount * kExitRingRadius
+            && std::abs(sumDy) * 2 > openCount * kExitRingRadius;
+
+        const int spawnIndex = kSpawnInOriginZone * zone.width + kSpawnInOriginZone;
+        EXPECT_EQ(floodCount(zone, spawnIndex, isEmpty), countIf(zone, isEmpty))
+            << "seed " << seed;
+    }
+    EXPECT_TRUE(foundDiagonalExit);
 }
 
 TEST(WorldGenTest, OnlyKnownTiles)
@@ -363,11 +459,11 @@ TEST(WorldGenTest, GoldenSeedsAreStable)
     // are expected to change; an UNINTENDED change is a determinism regression.
     struct Golden { std::uint64_t seed; int cx; int cy; std::uint64_t sig; };
     const Golden golden[] = {
-        {1, 0, 0, 9039680880718754929ULL},
-        {2, 0, 0, 9071980198742279077ULL},
-        {3, 0, 0, 10817396676755354310ULL},
-        {1, 1, 0, 16021764148982968270ULL},
-        {1, -1, -1, 11402122804634447066ULL},
+        {1, 0, 0, 4715738312930184701ULL},
+        {2, 0, 0, 12999543873769618585ULL},
+        {3, 0, 0, 18033708525029231873ULL},
+        {1, 1, 0, 4742152759258982225ULL},
+        {1, -1, -1, 6002469526093962785ULL},
     };
     for (const Golden &g : golden)
         EXPECT_EQ(signature(generateChunk(g.seed, g.cx, g.cy)), g.sig)

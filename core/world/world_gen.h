@@ -14,9 +14,10 @@ namespace pyrelite
     //
     // Chunks are storage/streaming slices only. Geometry is designed in larger 4x4-chunk
     // ZONES, removing the artificial rock frame at every chunk edge. Each zone contains
-    // curved, variable-width passages and irregular rooms cut through rock. The rock
-    // lining them is a thin BANK (Wall with some bomb-through Brick); everything deeper
-    // is VOID, visible behind the bank but never reachable.
+    // a cave-like tree of narrow, arbitrary-angle passages, junctions and irregular
+    // rooms cut through rock. The rock lining them is a thin BANK (Wall with some
+    // bomb-through Brick); everything deeper is VOID, visible behind the bank but never
+    // reachable. The origin has a protected spawn chamber with exactly one seeded exit.
     //
     // Connectivity is guaranteed BY CONSTRUCTION. Every non-origin zone has one parent
     // edge leading toward the origin; seeded optional edges add loops. Portal position

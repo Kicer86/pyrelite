@@ -19,6 +19,8 @@ namespace pyrelite
         constexpr int kZoneHalfChunks = kZoneChunks / 2;
         constexpr int kZoneCells = kZoneSize * kZoneSize;
         constexpr int kProvinceZones = 2;
+        constexpr int kSpawnSealInnerRadius = 6;
+        constexpr int kSpawnSealOuterRadius = 13;
 
         constexpr int kRingsPerTier = 2;
         constexpr int kMaxTier = 4;
@@ -65,6 +67,8 @@ namespace pyrelite
 
             bool operator==(const Point &) const = default;
         };
+
+        constexpr Point kSpawn{kZoneSize / 2 + 1, kZoneSize / 2 + 1};
 
         // Every non-origin zone chooses one cardinal parent one step closer to the
         // origin. These edges form an infinite rooted tree, guaranteeing that every
@@ -122,7 +126,7 @@ namespace pyrelite
             constexpr int kSpan = kZoneSize - 2 * kMargin;
             return {
                 kMargin + static_cast<int>(value % kSpan),
-                1 + static_cast<int>((value >> 16) % 3),
+                (value >> 16) % 3 == 0 ? 1 : 0,
             };
         }
 
@@ -141,11 +145,11 @@ namespace pyrelite
         {
             switch (tier)
             {
-            case 0:  return {2, 4, 4, 30, 4, 7, 8};
-            case 1:  return {2, 4, 3, 28, 4, 7, 9};
-            case 2:  return {2, 3, 3, 25, 3, 6, 10};
-            case 3:  return {1, 3, 2, 22, 3, 6, 11};
-            default: return {1, 2, 2, 20, 3, 5, 12};
+            case 0:  return {1, 1, 3, 30, 4, 7, 5};
+            case 1:  return {1, 1, 3, 28, 4, 7, 6};
+            case 2:  return {1, 1, 3, 25, 4, 7, 7};
+            case 3:  return {1, 1, 2, 22, 4, 6, 8};
+            default: return {1, 1, 2, 20, 3, 6, 9};
             }
         }
 
@@ -155,13 +159,13 @@ namespace pyrelite
             switch (biome)
             {
             case Biome::Hall:
-                style.minRooms = std::max(2, style.minRooms - 1);
+                style.minRooms = std::max(3, style.minRooms - 1);
                 style.maxRooms = std::max(style.minRooms, style.maxRooms - 2);
                 style.maxCorridorRadius += 1;
                 break;
             case Biome::Warren:
                 style.minRooms += 2;
-                style.maxRooms += 4;
+                style.maxRooms += 3;
                 break;
             case Biome::Pillars:
                 style.islandPct += 14;
@@ -173,7 +177,7 @@ namespace pyrelite
             case Biome::Cavern:
                 style.minRooms += 1;
                 style.maxRooms += 2;
-                style.minCorridorRadius = std::max(style.minCorridorRadius, 2);
+                style.maxCorridorRadius += 1;
                 break;
             }
             return style;
@@ -254,6 +258,161 @@ namespace pyrelite
             }
         }
 
+        struct SpawnLayout
+        {
+            Point exitAnchor;
+        };
+
+        SpawnLayout spawnLayout(std::uint64_t seed)
+        {
+            // Sixteen directions around the chamber. Integer endpoints avoid floating
+            // point while still giving axial, diagonal and intermediate tunnel angles.
+            constexpr std::array<Point, 16> offsets = {{
+                {14, 0}, {13, 5}, {10, 10}, {5, 13},
+                {0, 14}, {-5, 13}, {-10, 10}, {-13, 5},
+                {-14, 0}, {-13, -5}, {-10, -10}, {-5, -13},
+                {0, -14}, {5, -13}, {10, -10}, {13, -5},
+            }};
+            const Point offset = offsets[coordinateValue(seed, 0, 0,
+                0xA0761D6478BD642FULL) % offsets.size()];
+            return {{kSpawn.x + offset.x, kSpawn.y + offset.y}};
+        }
+
+        void carveSpawnChamber(GeneratedZone &zone, const SpawnLayout &layout)
+        {
+            carveEllipse(zone, kSpawn.x, kSpawn.y, 5, 4);
+            carveDisc(zone, kSpawn.x - 2, kSpawn.y + 1, 3);
+            carveCapsule(zone, kSpawn, layout.exitAnchor, 1);
+        }
+
+        void sealSpawnChamber(GeneratedZone &zone, const SpawnLayout &layout)
+        {
+            const int innerSquared = kSpawnSealInnerRadius * kSpawnSealInnerRadius;
+            const int outerSquared = kSpawnSealOuterRadius * kSpawnSealOuterRadius;
+            for (int y = kSpawn.y - kSpawnSealOuterRadius;
+                 y <= kSpawn.y + kSpawnSealOuterRadius; ++y)
+                for (int x = kSpawn.x - kSpawnSealOuterRadius;
+                     x <= kSpawn.x + kSpawnSealOuterRadius; ++x)
+                {
+                    const int dx = x - kSpawn.x;
+                    const int dy = y - kSpawn.y;
+                    const int distanceSquared = dx * dx + dy * dy;
+                    if (distanceSquared >= innerSquared && distanceSquared <= outerSquared)
+                        zone.set(x, y, Tile::Wall);
+                }
+
+            // Reopen exactly the chamber and its single tunnel after any unrelated
+            // corridor that crossed the protected ring has been sealed.
+            carveSpawnChamber(zone, layout);
+        }
+
+        bool protectedSpawnWall(int x, int y)
+        {
+            const int dx = x - kSpawn.x;
+            const int dy = y - kSpawn.y;
+            const int distanceSquared = dx * dx + dy * dy;
+            return distanceSquared >= kSpawnSealInnerRadius * kSpawnSealInnerRadius
+                && distanceSquared <= kSpawnSealOuterRadius * kSpawnSealOuterRadius;
+        }
+
+        std::array<bool, kZoneCells> floorReachableFromSpawn(const GeneratedZone &zone)
+        {
+            std::array<bool, kZoneCells> reached{};
+            std::vector<int> queue{kSpawn.y * kZoneSize + kSpawn.x};
+            for (std::size_t head = 0; head < queue.size(); ++head)
+            {
+                const int index = queue[head];
+                if (reached[static_cast<std::size_t>(index)])
+                    continue;
+                const int x = index % kZoneSize;
+                const int y = index / kZoneSize;
+                if (zone.at(x, y) != Tile::Empty)
+                    continue;
+                reached[static_cast<std::size_t>(index)] = true;
+                if (x > 0)         queue.push_back(index - 1);
+                if (x < kZoneLast) queue.push_back(index + 1);
+                if (y > 0)         queue.push_back(index - kZoneSize);
+                if (y < kZoneLast) queue.push_back(index + kZoneSize);
+            }
+            return reached;
+        }
+
+        // Sealing the chamber can cut a corridor that happened to cross its protected
+        // ring. Repair such components through rock outside the ring before banks are
+        // classified, preserving both global connectivity and the single entrance.
+        void connectFloorOutsideSpawnRing(GeneratedZone &zone)
+        {
+            while (true)
+            {
+                const auto reached = floorReachableFromSpawn(zone);
+                int target = -1;
+                for (int index = 0; index < kZoneCells; ++index)
+                    if (zone.at(index % kZoneSize, index / kZoneSize) == Tile::Empty
+                        && !reached[static_cast<std::size_t>(index)])
+                    {
+                        target = index;
+                        break;
+                    }
+                if (target < 0)
+                    return;
+
+                std::array<int, kZoneCells> previous;
+                previous.fill(-1);
+                std::vector<int> queue;
+                queue.reserve(kZoneCells);
+                for (int index = 0; index < kZoneCells; ++index)
+                    if (reached[static_cast<std::size_t>(index)])
+                    {
+                        previous[static_cast<std::size_t>(index)] = -2;
+                        queue.push_back(index);
+                    }
+
+                int connection = -1;
+                for (std::size_t head = 0; head < queue.size() && connection < 0; ++head)
+                {
+                    const int index = queue[head];
+                    const int x = index % kZoneSize;
+                    const int y = index / kZoneSize;
+                    const int neighbours[] = {
+                        x > 0 ? index - 1 : -1,
+                        x < kZoneLast ? index + 1 : -1,
+                        y > 0 ? index - kZoneSize : -1,
+                        y < kZoneLast ? index + kZoneSize : -1,
+                    };
+                    for (int neighbour : neighbours)
+                    {
+                        if (neighbour < 0
+                            || previous[static_cast<std::size_t>(neighbour)] != -1)
+                            continue;
+                        const int nx = neighbour % kZoneSize;
+                        const int ny = neighbour / kZoneSize;
+                        const bool boundary = nx == 0 || nx == kZoneLast
+                            || ny == 0 || ny == kZoneLast;
+                        if (protectedSpawnWall(nx, ny) && zone.at(nx, ny) != Tile::Empty)
+                            continue;
+                        if (boundary && zone.at(nx, ny) != Tile::Empty)
+                            continue;
+
+                        previous[static_cast<std::size_t>(neighbour)] = index;
+                        if (zone.at(nx, ny) == Tile::Empty
+                            && !reached[static_cast<std::size_t>(neighbour)])
+                        {
+                            connection = neighbour;
+                            break;
+                        }
+                        queue.push_back(neighbour);
+                    }
+                }
+
+                if (connection < 0)
+                    return;
+                for (int index = connection;
+                     previous[static_cast<std::size_t>(index)] >= 0;
+                     index = previous[static_cast<std::size_t>(index)])
+                    zone.set(index % kZoneSize, index / kZoneSize, Tile::Empty);
+            }
+        }
+
         void carvePortalVertical(GeneratedZone &zone, int edgeX, const Portal &portal)
         {
             const int innerX = edgeX == 0 ? 1 : kZoneLast - 1;
@@ -289,14 +448,18 @@ namespace pyrelite
             const int dx = end.x - start.x;
             const int dy = end.y - start.y;
             const int distance = std::max(std::abs(dx), std::abs(dy));
-            const int maxBend = std::clamp(distance / 3, 3, 12);
+            if (distance == 0)
+            {
+                carveDisc(zone, start.x, start.y, style.minCorridorRadius);
+                return;
+            }
+
+            const int maxBend = std::clamp(distance / 2, 4, 16);
             const int bend = randomBetween(rng, -maxBend, maxBend);
 
             Point control{(start.x + end.x) / 2, (start.y + end.y) / 2};
-            if (std::abs(dx) >= std::abs(dy))
-                control.y += bend;
-            else
-                control.x += bend;
+            control.x -= dy * bend / distance;
+            control.y += dx * bend / distance;
             control.x = std::clamp(control.x, 3, kZoneLast - 3);
             control.y = std::clamp(control.y, 3, kZoneLast - 3);
 
@@ -329,8 +492,8 @@ namespace pyrelite
             const int shape = static_cast<int>(rng.below(3));
             if (shape == 0)
             {
-                int radiusX = randomBetween(rng, 4, biome == Biome::Cavern ? 8 : 6);
-                int radiusY = randomBetween(rng, 3, biome == Biome::Cavern ? 7 : 6);
+                int radiusX = randomBetween(rng, 3, biome == Biome::Cavern ? 6 : 5);
+                int radiusY = randomBetween(rng, 2, biome == Biome::Cavern ? 5 : 4);
                 if (rng.chance(50))
                     std::swap(radiusX, radiusY);
                 carveEllipse(zone, center.x, center.y, radiusX, radiusY);
@@ -343,25 +506,25 @@ namespace pyrelite
                 int directionY = randomBetween(rng, -1, 1);
                 if (directionX == 0 && directionY == 0)
                     directionY = 1;
-                const int length = randomBetween(rng, 8, 16);
-                const int radius = randomBetween(rng, 2, biome == Biome::Hall ? 4 : 3);
+                const int length = randomBetween(rng, 7, 13);
+                const int radius = randomBetween(rng, 1, 2);
                 for (int step = -length / 2; step <= length / 2; ++step)
                     carveDisc(zone, center.x + directionX * step,
                               center.y + directionY * step, radius);
                 return;
             }
 
-            const int baseRadius = randomBetween(rng, 3, biome == Biome::Cavern ? 6 : 5);
+            const int baseRadius = randomBetween(rng, 2, biome == Biome::Cavern ? 4 : 3);
             carveDisc(zone, center.x, center.y, baseRadius);
-            const int lobes = randomBetween(rng, 3, biome == Biome::Warren ? 7 : 5);
+            const int lobes = randomBetween(rng, 2, biome == Biome::Warren ? 5 : 4);
             for (int lobe = 0; lobe < lobes; ++lobe)
             {
                 const Point lobeCenter{
-                    center.x + randomBetween(rng, -7, 7),
-                    center.y + randomBetween(rng, -7, 7),
+                    center.x + randomBetween(rng, -5, 5),
+                    center.y + randomBetween(rng, -5, 5),
                 };
-                const int lobeRadius = randomBetween(rng, 2, 5);
-                carveCapsule(zone, center, lobeCenter, std::min(2, lobeRadius));
+                const int lobeRadius = randomBetween(rng, 2, 3);
+                carveCapsule(zone, center, lobeCenter, 1);
                 carveDisc(zone, lobeCenter.x, lobeCenter.y, lobeRadius);
             }
         }
@@ -404,7 +567,7 @@ namespace pyrelite
 
             // Occasional chords turn the tree of rooms into local loops. They are not
             // needed for connectivity and therefore remain purely stylistic.
-            const int extraEdges = static_cast<int>(rng.below(3));
+            const int extraEdges = static_cast<int>(rng.below(2));
             for (int edge = 0; edge < extraEdges; ++edge)
             {
                 const auto from = static_cast<std::size_t>(rng.below(
@@ -507,7 +670,8 @@ namespace pyrelite
                     const int globalX = globalMinX + x;
                     const int globalY = globalMinY + y;
                     if (zone.zoneX() == 0 && zone.zoneY() == 0
-                        && std::abs(globalX - 1) <= 4 && std::abs(globalY - 1) <= 4)
+                        && std::abs(globalX - 1) <= kSpawnSealOuterRadius + 1
+                        && std::abs(globalY - 1) <= kSpawnSealOuterRadius + 1)
                         continue;
                     if (coordinateValue(seed, globalX, globalY,
                                         0xDB4F0B9175AE2165ULL) % 100
@@ -536,7 +700,11 @@ namespace pyrelite
             const int tier = std::min(std::max(std::abs(zoneX), std::abs(zoneY)), kMaxTier);
             const StyleParams style = styleFor(biome, tier);
             const Point here{zoneX, zoneY};
+            const bool isOrigin = zoneX == 0 && zoneY == 0;
+            const SpawnLayout spawn = spawnLayout(seed);
             std::vector<Point> nodes;
+            if (isOrigin)
+                nodes.push_back(spawn.exitAnchor);
 
             const Point west{zoneX - 1, zoneY};
             if (zonesConnected(seed, here, west))
@@ -575,25 +743,76 @@ namespace pyrelite
             }
 
             const int roomCount = randomBetween(rng, style.minRooms, style.maxRooms);
+            std::vector<Point> roomCenters;
             for (int room = 0; room < roomCount; ++room)
             {
-                const Point center{
-                    randomBetween(rng, 9, kZoneLast - 9),
-                    randomBetween(rng, 9, kZoneLast - 9),
-                };
+                Point center{0, 0};
+                bool found = false;
+                for (int attempt = 0; attempt < 32 && !found; ++attempt)
+                {
+                    center = {
+                        randomBetween(rng, 8, kZoneLast - 8),
+                        randomBetween(rng, 8, kZoneLast - 8),
+                    };
+                    const int spawnDx = center.x - kSpawn.x;
+                    const int spawnDy = center.y - kSpawn.y;
+                    if (isOrigin && spawnDx * spawnDx + spawnDy * spawnDy < 18 * 18)
+                        continue;
+
+                    found = true;
+                    for (const Point &other : roomCenters)
+                    {
+                        const int dx = center.x - other.x;
+                        const int dy = center.y - other.y;
+                        if (dx * dx + dy * dy < 12 * 12)
+                        {
+                            found = false;
+                            break;
+                        }
+                    }
+                }
+                if (!found)
+                    continue;
                 carveOrganicRoom(zone, rng, center, biome);
+                roomCenters.push_back(center);
                 nodes.push_back(center);
             }
 
-            if (zoneX == 0 && zoneY == 0)
+            // Small unadorned nodes become forks where several oblique tunnels can
+            // meet without every branch swelling into another large room.
+            const int junctionCount = 4 + static_cast<int>(rng.below(4));
+            for (int junction = 0; junction < junctionCount; ++junction)
             {
-                constexpr Point spawn{kZoneSize / 2 + 1, kZoneSize / 2 + 1};
-                carveDisc(zone, spawn.x, spawn.y, 3);
-                nodes.push_back(spawn);
+                Point point{0, 0};
+                bool found = false;
+                for (int attempt = 0; attempt < 24 && !found; ++attempt)
+                {
+                    point = {
+                        randomBetween(rng, 7, kZoneLast - 7),
+                        randomBetween(rng, 7, kZoneLast - 7),
+                    };
+                    const int dx = point.x - kSpawn.x;
+                    const int dy = point.y - kSpawn.y;
+                    found = !isOrigin || dx * dx + dy * dy >= 17 * 17;
+                }
+                if (found)
+                {
+                    carveDisc(zone, point.x, point.y, 1);
+                    nodes.push_back(point);
+                }
             }
 
+            if (isOrigin)
+                carveSpawnChamber(zone, spawn);
             connectNodes(zone, rng, nodes, style);
+            if (isOrigin)
+            {
+                sealSpawnChamber(zone, spawn);
+                connectFloorOutsideSpawnRing(zone);
+            }
             applyBanks(zone, rng, style);
+            if (isOrigin)
+                sealSpawnChamber(zone, spawn);
             placeFloorIslands(zone, seed, style);
             return zone;
         }
