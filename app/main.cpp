@@ -1,6 +1,9 @@
 
+#include <QCommandLineOption>
+#include <QCommandLineParser>
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
+#include <QVariantMap>
 
 #ifdef Q_OS_WASM
 #include <emscripten.h>
@@ -10,7 +13,19 @@ int main(int argc, char *argv[])
 {
     QGuiApplication app(argc, argv);
 
+    QCommandLineParser parser;
+    parser.setApplicationDescription(QStringLiteral("Pyrelite"));
+    parser.addHelpOption();
+    const QCommandLineOption previewOption(
+        QStringLiteral("preview"),
+        QStringLiteral("Fly freely over the generated world without running gameplay."));
+    parser.addOption(previewOption);
+    parser.process(app);
+
     QQmlApplicationEngine engine;
+    QVariantMap initialProperties;
+    initialProperties.insert(QStringLiteral("previewMode"), parser.isSet(previewOption));
+    engine.setInitialProperties(initialProperties);
     QObject::connect(
         &engine, &QQmlApplicationEngine::objectCreationFailed,
         &app, []() { QCoreApplication::exit(-1); },

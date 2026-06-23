@@ -15,6 +15,17 @@ cmake -B build
 cmake --build build
 ```
 
+## World preview
+
+Run the desktop app with a free-flying terrain camera:
+
+```
+./build/app/pyrelite --preview
+```
+
+Use WASD or the arrow keys to fly and `R` to return to the spawn. Gameplay is paused
+while previewing, and terrain continues streaming at the camera position.
+
 ## Tests
 
 ```

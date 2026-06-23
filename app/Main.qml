@@ -6,11 +6,13 @@ import PyreliteApp
 Window {
     id: root
 
+    property bool previewMode: false
+
     visibility: Qt.platform.os === "wasm" ? Window.FullScreen : Window.Windowed
     width: 960
     height: 820
 
-    title: "Pyrelite"
+    title: previewMode ? "Pyrelite — World Preview" : "Pyrelite"
     color: "#1b1b1b"
 
     BoardModel { id: board }
@@ -39,6 +41,12 @@ Window {
     // and felt stiff. Both knobs below are pure feel; view-only, core untouched.
     readonly property real deadzone: 0.4   // fraction of the viewport the box spans
     readonly property real followTau: 0.12 // catch-up time constant (s); larger = floatier
+    readonly property real previewSpeed: 14 // tiles per second; intentionally faster than play
+
+    property bool previewUp: false
+    property bool previewDown: false
+    property bool previewLeft: false
+    property bool previewRight: false
 
     // Current camera offset, the source of truth: smoothed each frame (in the tick
     // below) toward cameraTarget. Initialised by recenter() once the view is sized.
@@ -70,21 +78,61 @@ Window {
         viewY = centeredOffset(scene.height, board.playerY)
     }
 
-    // Drives bomb fuses + explosions in the core, once per rendered frame.
-    // FrameAnimation is tied to the render loop (requestAnimationFrame on web),
-    // so it keeps ticking even when idle — unlike a QTimer.
+    function setPreviewKey(key, pressed) {
+        switch (key) {
+        case Qt.Key_Up:    case Qt.Key_W: previewUp = pressed;    return true
+        case Qt.Key_Down:  case Qt.Key_S: previewDown = pressed;  return true
+        case Qt.Key_Left:  case Qt.Key_A: previewLeft = pressed;  return true
+        case Qt.Key_Right: case Qt.Key_D: previewRight = pressed; return true
+        }
+        return false
+    }
+
+    function clearPreviewKeys() {
+        previewUp = false
+        previewDown = false
+        previewLeft = false
+        previewRight = false
+    }
+
+    function advancePreview(frameTime) {
+        const horizontal = (previewLeft ? 1 : 0) - (previewRight ? 1 : 0)
+        const vertical = (previewUp ? 1 : 0) - (previewDown ? 1 : 0)
+        if (horizontal === 0 && vertical === 0)
+            return
+
+        // Keep diagonal flight at the same speed as axial flight and cap a stalled
+        // render frame so returning to the window cannot teleport the camera.
+        const diagonalScale = horizontal !== 0 && vertical !== 0 ? Math.SQRT1_2 : 1
+        const distance = previewSpeed * cell * Math.min(frameTime, 0.05) * diagonalScale
+        viewX += horizontal * distance
+        viewY += vertical * distance
+    }
+
+    onActiveChanged: {
+        if (!active)
+            clearPreviewKeys()
+    }
+
+    // Drives either free preview flight or the gameplay simulation once per rendered
+    // frame. FrameAnimation follows requestAnimationFrame on web, so it keeps ticking
+    // even when gameplay input is idle — unlike a QTimer.
     FrameAnimation {
         running: true
         onTriggered: {
+            if (root.previewMode) {
+                root.advancePreview(frameTime)
+            } else {
+                board.update(frameTime * 1000)
+                // Ease the camera toward its deadzone-constrained target. The factor is
+                // derived from frameTime so the catch-up rate is frame-rate independent.
+                const k = 1 - Math.exp(-frameTime / root.followTau)
+                root.viewX += (root.cameraTarget(root.viewX, scene.width, board.playerX) - root.viewX) * k
+                root.viewY += (root.cameraTarget(root.viewY, scene.height, board.playerY) - root.viewY) * k
+            }
             board.setVisibleArea(terrain.originX, terrain.originY,
                                  terrain.originX + terrain.cols - 1,
                                  terrain.originY + terrain.rows - 1)
-            board.update(frameTime * 1000)
-            // Ease the camera toward its deadzone-constrained target. The factor is
-            // derived from frameTime so the catch-up rate is frame-rate independent.
-            const k = 1 - Math.exp(-frameTime / root.followTau)
-            root.viewX += (root.cameraTarget(root.viewX, scene.width, board.playerX) - root.viewX) * k
-            root.viewY += (root.cameraTarget(root.viewY, scene.height, board.playerY) - root.viewY) * k
         }
     }
 
@@ -101,18 +149,40 @@ Window {
         // auto-repeat so a held key is one sustained press, not a stream of events.
         Keys.onPressed: (event) => {
             if (event.isAutoRepeat) { event.accepted = true; return }
+            if (root.previewMode && root.setPreviewKey(event.key, true)) {
+                event.accepted = true
+                return
+            }
+            if (root.previewMode) {
+                if (event.key === Qt.Key_R)
+                    root.recenter()
+                event.accepted = true
+                return
+            }
             switch (event.key) {
             case Qt.Key_Up:    case Qt.Key_W: board.setDirection(BoardModel.Up);    event.accepted = true; break
             case Qt.Key_Down:  case Qt.Key_S: board.setDirection(BoardModel.Down);  event.accepted = true; break
             case Qt.Key_Left:  case Qt.Key_A: board.setDirection(BoardModel.Left);  event.accepted = true; break
             case Qt.Key_Right: case Qt.Key_D: board.setDirection(BoardModel.Right); event.accepted = true; break
             case Qt.Key_Space:                board.placeBomb();                    event.accepted = true; break
-            case Qt.Key_R:                    board.restart(); root.recenter();     event.accepted = true; break
+            case Qt.Key_R:
+                board.restart()
+                root.recenter()
+                event.accepted = true
+                break
             }
         }
 
         Keys.onReleased: (event) => {
             if (event.isAutoRepeat) { event.accepted = true; return }
+            if (root.previewMode && root.setPreviewKey(event.key, false)) {
+                event.accepted = true
+                return
+            }
+            if (root.previewMode) {
+                event.accepted = true
+                return
+            }
             switch (event.key) {
             case Qt.Key_Up:    case Qt.Key_W: board.clearDirection(BoardModel.Up);    event.accepted = true; break
             case Qt.Key_Down:  case Qt.Key_S: board.clearDirection(BoardModel.Down);  event.accepted = true; break
@@ -311,6 +381,7 @@ Window {
         // Run HUD: current level and an XP bar toward the next. Top-left, never grabs
         // input so focus-on-click still works.
         Column {
+            visible: !root.previewMode
             anchors.left: parent.left
             anchors.top: parent.top
             anchors.margins: 10
@@ -338,6 +409,27 @@ Window {
                          * Math.min(1, board.xp / Math.max(1, board.xpToNextLevel))
                     color: "#ffd24a"
                 }
+            }
+        }
+
+        Rectangle {
+            visible: root.previewMode
+            anchors.left: parent.left
+            anchors.top: parent.top
+            anchors.margins: 10
+            width: previewLabel.implicitWidth + 20
+            height: previewLabel.implicitHeight + 12
+            radius: 5
+            color: Qt.rgba(0, 0, 0, 0.72)
+            border.color: "#69d2ff"
+
+            Text {
+                id: previewLabel
+                anchors.centerIn: parent
+                text: "PREVIEW · WASD / arrows · R resets view"
+                color: "#9be3ff"
+                font.pixelSize: 15
+                font.bold: true
             }
         }
 
