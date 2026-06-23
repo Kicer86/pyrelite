@@ -17,11 +17,28 @@ namespace
     constexpr std::uint64_t kSeed = 1; // fixed for now; run seeds come later
     constexpr int kStepMs = 16;        // ~60 Hz simulation quantum
     constexpr double kMaxFrameMs = 250; // cap catch-up after the render loop stalls
+    constexpr int kPreviewChunkRadius = 2;
     // Mirrors core/game.cpp's kBombFuseMs / kExplosionMs: the full fuse a bomb is
     // placed with and the lifetime of a flame. Used only here to normalise the
     // remaining time into a 0..1 fraction for the view.
     constexpr int kBombFuseMs = 2000;
     constexpr int kExplosionMs = 400;
+
+    BoardModel::Tile toViewTile(pyrelite::Tile tile)
+    {
+        switch (tile)
+        {
+        case pyrelite::Tile::Wall:
+            return BoardModel::Wall;
+        case pyrelite::Tile::Brick:
+            return BoardModel::Brick;
+        case pyrelite::Tile::Void:
+            return BoardModel::Void;
+        case pyrelite::Tile::Empty:
+            break;
+        }
+        return BoardModel::Empty;
+    }
 
     // Presentation only: the enemy archetype -> how it looks. This is the single
     // place enemy art lives, kept out of the headless core and out of the QML. Today
@@ -187,18 +204,48 @@ QString BoardModel::version() const
 
 int BoardModel::tileAt(int x, int y) const
 {
-    switch (m_game.tileAt(x, y))
-    {
-    case pyrelite::Tile::Wall:
-        return Wall;
-    case pyrelite::Tile::Brick:
-        return Brick;
-    case pyrelite::Tile::Void:
-        return Void;
-    case pyrelite::Tile::Empty:
-        break;
-    }
-    return Empty;
+    return toViewTile(m_game.tileAt(x, y));
+}
+
+int BoardModel::previewTileAt(int x, int y) const
+{
+    const int chunkX = pyrelite::chunkOf(x);
+    const int chunkY = pyrelite::chunkOf(y);
+    const auto it = m_previewChunks.find({chunkX, chunkY});
+    if (it == m_previewChunks.end())
+        return Unknown;
+    return toViewTile(it->second.at(x - chunkX * pyrelite::kChunkSize,
+                                    y - chunkY * pyrelite::kChunkSize));
+}
+
+bool BoardModel::previewChunkGenerated(int chunkX, int chunkY) const
+{
+    return m_previewChunks.contains({chunkX, chunkY});
+}
+
+void BoardModel::generatePreviewAround(int centerX, int centerY)
+{
+    const int centerChunkX = pyrelite::chunkOf(centerX);
+    const int centerChunkY = pyrelite::chunkOf(centerY);
+    const auto centerChunk = std::make_pair(centerChunkX, centerChunkY);
+    if (m_previewCenterChunk == centerChunk)
+        return;
+    m_previewCenterChunk = centerChunk;
+
+    bool generated = false;
+    for (int chunkY = centerChunkY - kPreviewChunkRadius;
+         chunkY <= centerChunkY + kPreviewChunkRadius; ++chunkY)
+        for (int chunkX = centerChunkX - kPreviewChunkRadius;
+             chunkX <= centerChunkX + kPreviewChunkRadius; ++chunkX)
+        {
+            const auto key = std::make_pair(chunkX, chunkY);
+            if (m_previewChunks.contains(key))
+                continue;
+            m_previewChunks.emplace(key, pyrelite::generateChunk(kSeed, chunkX, chunkY));
+            generated = true;
+        }
+    if (generated)
+        emitChanged();
 }
 
 int BoardModel::tierAt(int x, int y) const

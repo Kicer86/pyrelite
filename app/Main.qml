@@ -18,12 +18,15 @@ Window {
     BoardModel { id: board }
 
     // Tile size in pixels. Gameplay keeps the default scale; preview mode may change
-    // it, which increases/decreases the repeater's tile window and therefore streams
-    // real additional terrain rather than scaling a fixed world snapshot.
+    // it to sample a wider/narrower world window. Generation stays on a fixed chunk
+    // radius around the camera, so a wide view can include unexplored space.
     readonly property real defaultCell: 48
     readonly property real minPreviewCell: 8
     readonly property real maxPreviewCell: 96
     property real cell: defaultCell
+    readonly property int previewChunkTiles: 16
+    readonly property color unknownTerrain: "#11151d"
+    readonly property color unknownGrid: "#263142"
 
     // Region palette by world tier (board.tierAt): floor channel, rock bank, bombable
     // brick, and the void abyss seen behind the rock. Tiers rise with distance from
@@ -140,6 +143,9 @@ Window {
         onTriggered: {
             if (root.previewMode) {
                 root.advancePreview(frameTime)
+                const centerTileX = Math.floor((scene.width / 2 - root.viewX) / root.cell)
+                const centerTileY = Math.floor((scene.height / 2 - root.viewY) / root.cell)
+                board.generatePreviewAround(centerTileX, centerTileY)
             } else {
                 board.update(frameTime * 1000)
                 // Ease the camera toward its deadzone-constrained target. The factor is
@@ -147,10 +153,10 @@ Window {
                 const k = 1 - Math.exp(-frameTime / root.followTau)
                 root.viewX += (root.cameraTarget(root.viewX, scene.width, board.playerX) - root.viewX) * k
                 root.viewY += (root.cameraTarget(root.viewY, scene.height, board.playerY) - root.viewY) * k
+                board.setVisibleArea(terrain.originX, terrain.originY,
+                                     terrain.originX + terrain.cols - 1,
+                                     terrain.originY + terrain.rows - 1)
             }
-            board.setVisibleArea(terrain.originX, terrain.originY,
-                                 terrain.originX + terrain.cols - 1,
-                                 terrain.originY + terrain.rows - 1)
         }
     }
 
@@ -241,7 +247,9 @@ Window {
                 readonly property int originX: Math.floor(-root.viewX / root.cell) - 1
                 readonly property int originY: Math.floor(-root.viewY / root.cell) - 1
 
-                model: cols * rows
+                // Preview uses one Canvas below. Keeping thousands of Rectangle
+                // delegates alive was the dominant cost at maximum zoom-out.
+                model: root.previewMode ? 0 : cols * rows
 
                 TerrainTile {
                     required property int index
@@ -260,6 +268,110 @@ Window {
                     cell: root.cell
                     x: gx * root.cell
                     y: gy * root.cell
+                }
+            }
+
+            // Preview terrain is rendered as one scene-graph item. It repaints only
+            // when the integer tile origin, zoom, or discovered chunk set changes;
+            // sub-tile camera motion moves this cached image with boardView.
+            Canvas {
+                id: previewTerrain
+
+                visible: root.previewMode
+                antialiasing: false
+
+                readonly property int originX: terrain.originX
+                readonly property int originY: terrain.originY
+                readonly property int cols: terrain.cols
+                readonly property int rows: terrain.rows
+                readonly property real tileSize: root.cell
+                readonly property int renderedRevision: board.revision
+
+                x: originX * tileSize
+                y: originY * tileSize
+                width: cols * tileSize
+                height: rows * tileSize
+
+                onOriginXChanged: requestPaint()
+                onOriginYChanged: requestPaint()
+                onColsChanged: requestPaint()
+                onRowsChanged: requestPaint()
+                onTileSizeChanged: requestPaint()
+                onRenderedRevisionChanged: requestPaint()
+
+                onPaint: {
+                    const context = getContext("2d")
+                    context.clearRect(0, 0, width, height)
+                    context.fillStyle = root.unknownTerrain
+                    context.fillRect(0, 0, width, height)
+
+                    // Chunk-scale grid is visible only where no generated tile later
+                    // paints over it, making unexplored space unambiguous from Void.
+                    context.strokeStyle = root.unknownGrid
+                    context.lineWidth = 1
+                    context.beginPath()
+                    for (let col = 0; col <= cols; ++col) {
+                        const gx = originX + col
+                        if ((gx % root.previewChunkTiles + root.previewChunkTiles)
+                                % root.previewChunkTiles === 0) {
+                            const x = col * tileSize + 0.5
+                            context.moveTo(x, 0)
+                            context.lineTo(x, height)
+                        }
+                    }
+                    for (let row = 0; row <= rows; ++row) {
+                        const gy = originY + row
+                        if ((gy % root.previewChunkTiles + root.previewChunkTiles)
+                                % root.previewChunkTiles === 0) {
+                            const y = row * tileSize + 0.5
+                            context.moveTo(0, y)
+                            context.lineTo(width, y)
+                        }
+                    }
+                    context.stroke()
+
+                    const drawBorders = tileSize >= 14
+                    const firstChunkX = Math.floor(originX / root.previewChunkTiles)
+                    const firstChunkY = Math.floor(originY / root.previewChunkTiles)
+                    const lastChunkX = Math.floor((originX + cols - 1)
+                                                  / root.previewChunkTiles)
+                    const lastChunkY = Math.floor((originY + rows - 1)
+                                                  / root.previewChunkTiles)
+                    for (let chunkY = firstChunkY; chunkY <= lastChunkY; ++chunkY) {
+                        for (let chunkX = firstChunkX; chunkX <= lastChunkX; ++chunkX) {
+                            if (!board.previewChunkGenerated(chunkX, chunkY))
+                                continue
+
+                            const pal = root.tierColors[
+                                Math.min(board.tierAt(chunkX * root.previewChunkTiles,
+                                                      chunkY * root.previewChunkTiles),
+                                         root.tierColors.length - 1)]
+                            const firstX = Math.max(originX, chunkX * root.previewChunkTiles)
+                            const firstY = Math.max(originY, chunkY * root.previewChunkTiles)
+                            const lastX = Math.min(originX + cols,
+                                                   (chunkX + 1) * root.previewChunkTiles)
+                            const lastY = Math.min(originY + rows,
+                                                   (chunkY + 1) * root.previewChunkTiles)
+                            for (let gy = firstY; gy < lastY; ++gy) {
+                                for (let gx = firstX; gx < lastX; ++gx) {
+                                    const tile = board.previewTileAt(gx, gy)
+                                    context.fillStyle = tile === BoardModel.Wall ? pal.rock
+                                        : tile === BoardModel.Brick ? pal.brick
+                                        : tile === BoardModel.Void ? pal.abyss
+                                        : pal.floor
+                                    const x = (gx - originX) * tileSize
+                                    const y = (gy - originY) * tileSize
+                                    context.fillRect(x, y, Math.ceil(tileSize), Math.ceil(tileSize))
+                                    if (drawBorders && tile !== BoardModel.Void) {
+                                        context.strokeStyle = "#2a2a2a"
+                                        context.lineWidth = 1
+                                        context.strokeRect(x + 0.5, y + 0.5,
+                                                           tileSize - 1, tileSize - 1)
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
@@ -449,7 +561,8 @@ Window {
                 id: previewLabel
                 anchors.centerIn: parent
                 text: "PREVIEW · WASD / arrows · + / − zoom · R resets view · "
-                    + Math.round(root.cell / root.defaultCell * 100) + "% zoom"
+                    + Math.round(root.cell / root.defaultCell * 100) + "% zoom · "
+                    + board.previewChunkCount + " chunks · grid = unexplored"
                 color: "#9be3ff"
                 font.pixelSize: 15
                 font.bold: true
