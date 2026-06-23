@@ -17,12 +17,11 @@ namespace pyrelite
         return (r != 0 && r < 0) ? q - 1 : q;
     }
 
-    // The interior STYLE of a chunk's channel. The generator draws one per chunk from
-    // its seed; it biases how the navigable channel is decorated — a long open Hall, a
-    // chamber-heavy Warren, a Pillar island field, a brick-dense Thicket, or one wide
-    // Cavern. A single switch seam (mirrors the enemy archetypes) so a new style is one
-    // enum value + a few knobs. Style only ever tweaks decoration density; the channel
-    // skeleton that guarantees connectivity is style-independent.
+    // The interior STYLE of a generated province. Several neighbouring zones share a
+    // biome, and every chunk cut from them reports it: a long open Hall, a chamber-heavy
+    // Warren, a Pillar island field, a brick-dense Thicket, or a wide Cavern. Style
+    // changes room and decoration parameters; the graph that guarantees connectivity
+    // remains style-independent.
     enum class Biome { Hall, Warren, Pillars, Thicket, Cavern };
     inline constexpr int kBiomeCount = 5;
 

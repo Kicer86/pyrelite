@@ -7,24 +7,23 @@
 
 namespace pyrelite
 {
-    // Deterministically generate the world chunk at (chunkX, chunkY) for a world
-    // seed. Pure function: the same (seed, chunkX, chunkY) always yields the identical
-    // chunk on every platform, so the streamed world is reproducible and any chunk can
-    // be materialized on demand without its neighbours.
+    // Deterministically generate the world chunk at (chunkX, chunkY) for a world seed.
+    // Pure function: the same (seed, chunkX, chunkY) always yields the identical chunk
+    // on every platform, so the streamed world is reproducible and any chunk can be
+    // materialized on demand without its neighbours.
     //
-    // Each chunk is carved like a stretch of RIVER: a meandering navigable CHANNEL of
-    // Empty tiles, cut through solid rock, with occasional wider chambers along it. The
-    // rock immediately lining the channel is a thin BANK (Wall, with some bomb-through
-    // Brick for shortcuts and power-ups); everything deeper than the bank is VOID — the
-    // abyss the channel was cut through, visible behind the rock but never reachable.
+    // Chunks are storage/streaming slices only. Geometry is designed in larger 4x4-chunk
+    // ZONES, removing the artificial rock frame at every chunk edge. Each zone contains
+    // curved, variable-width passages and irregular rooms cut through rock. The rock
+    // lining them is a thin BANK (Wall with some bomb-through Brick); everything deeper
+    // is VOID, visible behind the bank but never reachable.
     //
-    // Connectivity is guaranteed BY CONSTRUCTION without neighbour queries: where the
-    // channel crosses each chunk edge is a pure function of the world seed and the
-    // SHARED seam identity, so a chunk's crossing always lines up with its neighbour's
-    // across every seam. Inside the chunk every crossing is carved to a common hub, so
-    // the whole world's channel is one connected component — walkable chunk-to-chunk
-    // with no bombing. (Bricks are bomb-through and only ever border the channel, so
-    // they never partition it either.)
+    // Connectivity is guaranteed BY CONSTRUCTION. Every non-origin zone has one parent
+    // edge leading toward the origin; seeded optional edges add loops. Portal position
+    // and width come from the SHARED zone-boundary identity, so independently generated
+    // neighbours agree exactly. All portals and rooms inside a zone are joined by a
+    // deterministic spanning tree plus optional local loops. The whole world's floor is
+    // therefore one component walkable without bombing.
     Chunk generateChunk(std::uint64_t seed, int chunkX, int chunkY);
 
     // The difficulty/theme TIER of a chunk, rising with distance from the origin so the

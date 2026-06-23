@@ -1,10 +1,10 @@
-
 #include "world/world_gen.h"
 
 #include <algorithm>
 #include <array>
 #include <cstdint>
 #include <cstdlib>
+#include <limits>
 #include <vector>
 
 #include "rng/rng.h"
@@ -13,13 +13,16 @@ namespace pyrelite
 {
     namespace
     {
-        constexpr int kLast = kChunkSize - 1;       // last local index (the border)
-        constexpr int kCenter = kChunkSize / 2;
+        constexpr int kZoneChunks = 4;
+        constexpr int kZoneSize = kZoneChunks * kChunkSize;
+        constexpr int kZoneLast = kZoneSize - 1;
+        constexpr int kZoneHalfChunks = kZoneChunks / 2;
+        constexpr int kZoneCells = kZoneSize * kZoneSize;
+        constexpr int kProvinceZones = 2;
 
-        constexpr int kRingsPerTier = 2;            // chunks per escalation ring
+        constexpr int kRingsPerTier = 2;
         constexpr int kMaxTier = 4;
 
-        // splitmix64 finaliser — turns a mixed key into a well-avalanched 64-bit value.
         std::uint64_t mix64(std::uint64_t h)
         {
             h = (h ^ (h >> 30)) * 0xBF58476D1CE4E5B9ULL;
@@ -27,243 +30,572 @@ namespace pyrelite
             return h ^ (h >> 31);
         }
 
-        // A chunk-unique, well-avalanched seed, so adjacent chunks look unrelated.
-        std::uint64_t chunkSeed(std::uint64_t seed, int chunkX, int chunkY)
+        std::uint64_t coordinateValue(std::uint64_t seed, int x, int y,
+                                      std::uint64_t salt)
         {
-            std::uint64_t h = seed;
-            h ^= static_cast<std::uint64_t>(static_cast<std::uint32_t>(chunkX)) * 0xD1B54A32D192ED03ULL;
-            h ^= static_cast<std::uint64_t>(static_cast<std::uint32_t>(chunkY)) * 0x9E3779B97F4A7C15ULL;
+            std::uint64_t h = seed ^ salt;
+            h ^= static_cast<std::uint64_t>(static_cast<std::uint32_t>(x))
+                * 0xD1B54A32D192ED03ULL;
+            h ^= static_cast<std::uint64_t>(static_cast<std::uint32_t>(y))
+                * 0x9E3779B97F4A7C15ULL;
             return mix64(h);
         }
 
-        // A value for a SHARED chunk boundary, identical from either side, so the two
-        // chunks that meet at a seam agree on where the channel crosses it without ever
-        // querying each other. axis 0 = vertical seam at boundary x = bx (opening spans
-        // rows); axis 1 = horizontal seam at boundary y = by (opening spans columns).
-        std::uint64_t seamValue(std::uint64_t seed, int bx, int by, int axis)
+        int floorDiv(int value, int divisor)
         {
-            std::uint64_t h = seed * 0x100000001B3ULL + 0x2545F4914F6CDD1DULL;
-            h ^= static_cast<std::uint64_t>(static_cast<std::uint32_t>(bx)) * 0xD1B54A32D192ED03ULL;
-            h ^= static_cast<std::uint64_t>(static_cast<std::uint32_t>(by)) * 0x9E3779B97F4A7C15ULL;
-            h ^= static_cast<std::uint64_t>(static_cast<std::uint32_t>(axis)) * 0xC2B2AE3D27D4EB4FULL;
-            return mix64(h);
+            const int q = value / divisor;
+            const int r = value % divisor;
+            return r < 0 ? q - 1 : q;
         }
 
-        // Where (and how wide) the channel crosses one chunk edge: a centre cell on the
-        // edge plus a half-width, kept clear of the corners so a crossing never lands on
-        // one. Derived purely from a seamValue, so both sides of the seam agree.
-        struct Crossing
+        int zoneOfChunk(int chunkCoord)
+        {
+            return floorDiv(chunkCoord + kZoneHalfChunks, kZoneChunks);
+        }
+
+        int zoneMinChunk(int zoneCoord)
+        {
+            return zoneCoord * kZoneChunks - kZoneHalfChunks;
+        }
+
+        struct Point
+        {
+            int x;
+            int y;
+
+            bool operator==(const Point &) const = default;
+        };
+
+        // Every non-origin zone chooses one cardinal parent one step closer to the
+        // origin. These edges form an infinite rooted tree, guaranteeing that every
+        // generated area belongs to the same world component. Other edges may be added
+        // as loops, but never need to be opened merely because a chunk boundary exists.
+        Point parentZone(std::uint64_t seed, int zoneX, int zoneY)
+        {
+            if (zoneX == 0 && zoneY == 0)
+                return {0, 0};
+            if (zoneX == 0)
+                return {0, zoneY + (zoneY > 0 ? -1 : 1)};
+            if (zoneY == 0)
+                return {zoneX + (zoneX > 0 ? -1 : 1), 0};
+
+            const bool moveX = coordinateValue(seed, zoneX, zoneY,
+                                                0xFA9B6C83D4E1A257ULL) % 2 == 0;
+            if (moveX)
+                return {zoneX + (zoneX > 0 ? -1 : 1), zoneY};
+            return {zoneX, zoneY + (zoneY > 0 ? -1 : 1)};
+        }
+
+        std::uint64_t edgeValue(std::uint64_t seed, Point a, Point b,
+                                std::uint64_t salt)
+        {
+            if (a.x != b.x)
+            {
+                const int boundaryX = std::max(a.x, b.x);
+                return coordinateValue(seed, boundaryX, a.y,
+                                       salt ^ 0xA24BAED4963EE407ULL);
+            }
+            const int boundaryY = std::max(a.y, b.y);
+            return coordinateValue(seed, a.x, boundaryY,
+                                   salt ^ 0x9FB21C651E98DF25ULL);
+        }
+
+        bool zonesConnected(std::uint64_t seed, Point a, Point b)
+        {
+            if (parentZone(seed, a.x, a.y) == b || parentZone(seed, b.x, b.y) == a)
+                return true;
+
+            // Sparse non-tree edges make loops and alternate routes without restoring
+            // the old mandatory four-way cross in every generation unit.
+            return edgeValue(seed, a, b, 0xC6BC279692B5CC83ULL) % 100 < 18;
+        }
+
+        struct Portal
         {
             int center;
-            int half;
+            int halfWidth;
         };
 
-        Crossing crossingFrom(std::uint64_t v)
+        Portal portalFor(std::uint64_t value)
         {
-            constexpr int kMargin = 3;
-            constexpr int kSpan = kChunkSize - 2 * kMargin;
-            Crossing cr;
-            cr.center = kMargin + static_cast<int>(v % static_cast<std::uint64_t>(kSpan));
-            cr.half = (v >> 16) % 3 == 0 ? 1 : 0; // ~1/3 of crossings are three wide
-            return cr;
+            constexpr int kMargin = 8;
+            constexpr int kSpan = kZoneSize - 2 * kMargin;
+            return {
+                kMargin + static_cast<int>(value % kSpan),
+                1 + static_cast<int>((value >> 16) % 3),
+            };
         }
 
-        // The decoration knobs for one chunk: corridor width, how deep the rock bank is
-        // before it gives way to void, and how much brick/island/chamber to scatter.
         struct StyleParams
         {
-            int corridorRadius;
+            int minCorridorRadius;
+            int maxCorridorRadius;
             int bankDepth;
             int brickPct;
+            int minRooms;
+            int maxRooms;
             int islandPct;
-            int chamberCount;
         };
 
-        // Difficulty/theme by tier: outward chunks get tighter channels, thinner banks
-        // (so more void shows through), fewer chambers and sparser brick.
         StyleParams tierBase(int tier)
         {
             switch (tier)
             {
-            case 0:  return {1, 3, 32, 10, 2};
-            case 1:  return {1, 2, 28, 12, 2};
-            case 2:  return {1, 2, 24, 13, 1};
-            case 3:  return {0, 1, 20, 15, 1};
-            default: return {0, 1, 16, 18, 1};
+            case 0:  return {2, 4, 4, 30, 4, 7, 8};
+            case 1:  return {2, 4, 3, 28, 4, 7, 9};
+            case 2:  return {2, 3, 3, 25, 3, 6, 10};
+            case 3:  return {1, 3, 2, 22, 3, 6, 11};
+            default: return {1, 2, 2, 20, 3, 5, 12};
             }
         }
 
-        // Per-chunk style flavour layered on the tier base — connectivity-neutral: it
-        // only nudges decoration density, never the channel skeleton. (Mirrors the enemy
-        // archetype switch: a new style is one case here.)
         StyleParams styleFor(Biome biome, int tier)
         {
-            StyleParams s = tierBase(tier);
+            StyleParams style = tierBase(tier);
             switch (biome)
             {
-            case Biome::Hall:    if (s.chamberCount > 0) --s.chamberCount; break;
-            case Biome::Warren:  s.chamberCount += 2; break;
-            case Biome::Pillars: s.islandPct += 14; break;
-            case Biome::Thicket: s.brickPct += 22; break;
-            case Biome::Cavern:  ++s.chamberCount; s.corridorRadius = std::max(s.corridorRadius, 1); break;
+            case Biome::Hall:
+                style.minRooms = std::max(2, style.minRooms - 1);
+                style.maxRooms = std::max(style.minRooms, style.maxRooms - 2);
+                style.maxCorridorRadius += 1;
+                break;
+            case Biome::Warren:
+                style.minRooms += 2;
+                style.maxRooms += 4;
+                break;
+            case Biome::Pillars:
+                style.islandPct += 14;
+                break;
+            case Biome::Thicket:
+                style.brickPct += 22;
+                style.islandPct += 5;
+                break;
+            case Biome::Cavern:
+                style.minRooms += 1;
+                style.maxRooms += 2;
+                style.minCorridorRadius = std::max(style.minCorridorRadius, 2);
+                break;
             }
-            return s;
+            return style;
         }
 
-        int jitter(Rng &rng) { return -2 + static_cast<int>(rng.below(5)); } // [-2, 2]
-
-        // Carve one floor cell. Clamped to the interior, so corridors and chambers can
-        // never punch the border ring — the only openings in the ring are the explicit
-        // seam crossings, which keeps a chunk's edges aligned with its neighbours'.
-        void carveCell(Chunk &chunk, int x, int y)
+        class GeneratedZone
         {
-            if (x >= 1 && x <= kLast - 1 && y >= 1 && y <= kLast - 1)
-                chunk.set(x, y, Tile::Empty);
+        public:
+            GeneratedZone(int zoneX, int zoneY, Biome biome)
+                : m_zoneX(zoneX)
+                , m_zoneY(zoneY)
+                , m_biome(biome)
+            {
+                m_tiles.fill(Tile::Wall);
+            }
+
+            int zoneX() const { return m_zoneX; }
+            int zoneY() const { return m_zoneY; }
+            Biome biome() const { return m_biome; }
+
+            Tile at(int x, int y) const
+            {
+                return m_tiles[static_cast<std::size_t>(y) * kZoneSize + x];
+            }
+
+            void set(int x, int y, Tile tile)
+            {
+                m_tiles[static_cast<std::size_t>(y) * kZoneSize + x] = tile;
+            }
+
+        private:
+            int m_zoneX;
+            int m_zoneY;
+            Biome m_biome;
+            std::array<Tile, kZoneCells> m_tiles;
+        };
+
+        void carveCell(GeneratedZone &zone, int x, int y)
+        {
+            if (x >= 1 && x < kZoneLast && y >= 1 && y < kZoneLast)
+                zone.set(x, y, Tile::Empty);
         }
 
-        // Carve a diamond of floor of the given radius (0 = a single cell).
-        void carveBlob(Chunk &chunk, int cx, int cy, int radius)
+        void carveDisc(GeneratedZone &zone, int centerX, int centerY, int radius)
         {
+            const int radiusSquared = radius * radius;
             for (int dy = -radius; dy <= radius; ++dy)
                 for (int dx = -radius; dx <= radius; ++dx)
-                    if (std::abs(dx) + std::abs(dy) <= radius)
-                        carveCell(chunk, cx + dx, cy + dy);
+                    if (dx * dx + dy * dy <= radiusSquared)
+                        carveCell(zone, centerX + dx, centerY + dy);
         }
 
-        void carveCrossingV(Chunk &chunk, int edgeX, const Crossing &cr)
+        void carveEllipse(GeneratedZone &zone, int centerX, int centerY,
+                          int radiusX, int radiusY)
         {
-            const int inner = edgeX == 0 ? 1 : kLast - 1;
-            for (int dy = -cr.half; dy <= cr.half; ++dy)
+            const int radiusXSquared = radiusX * radiusX;
+            const int radiusYSquared = radiusY * radiusY;
+            const int limit = radiusXSquared * radiusYSquared;
+            for (int dy = -radiusY; dy <= radiusY; ++dy)
+                for (int dx = -radiusX; dx <= radiusX; ++dx)
+                    if (dx * dx * radiusYSquared + dy * dy * radiusXSquared <= limit)
+                        carveCell(zone, centerX + dx, centerY + dy);
+        }
+
+        void carveCapsule(GeneratedZone &zone, Point start, Point end, int radius)
+        {
+            const int steps = std::max(std::abs(end.x - start.x), std::abs(end.y - start.y));
+            if (steps == 0)
             {
-                const int y = cr.center + dy;
-                if (y >= 1 && y <= kLast - 1)
+                carveDisc(zone, start.x, start.y, radius);
+                return;
+            }
+            for (int step = 0; step <= steps; ++step)
+            {
+                const int x = (start.x * (steps - step) + end.x * step + steps / 2) / steps;
+                const int y = (start.y * (steps - step) + end.y * step + steps / 2) / steps;
+                carveDisc(zone, x, y, radius);
+            }
+        }
+
+        void carvePortalVertical(GeneratedZone &zone, int edgeX, const Portal &portal)
+        {
+            const int innerX = edgeX == 0 ? 1 : kZoneLast - 1;
+            for (int offset = -portal.halfWidth; offset <= portal.halfWidth; ++offset)
+            {
+                zone.set(edgeX, portal.center + offset, Tile::Empty);
+                zone.set(innerX, portal.center + offset, Tile::Empty);
+            }
+        }
+
+        void carvePortalHorizontal(GeneratedZone &zone, int edgeY, const Portal &portal)
+        {
+            const int innerY = edgeY == 0 ? 1 : kZoneLast - 1;
+            for (int offset = -portal.halfWidth; offset <= portal.halfWidth; ++offset)
+            {
+                zone.set(portal.center + offset, edgeY, Tile::Empty);
+                zone.set(portal.center + offset, innerY, Tile::Empty);
+            }
+        }
+
+        int randomBetween(Rng &rng, int minimum, int maximum)
+        {
+            return minimum + static_cast<int>(rng.below(
+                static_cast<std::uint32_t>(maximum - minimum + 1)));
+        }
+
+        // Integer quadratic Bezier rasterisation produces a smooth bend while keeping
+        // seeded worlds bit-identical across platforms. Circular stamps hide the tile
+        // staircase and let the passage breathe between narrow and broad stretches.
+        void carveCurvedCorridor(GeneratedZone &zone, Rng &rng, Point start, Point end,
+                                 const StyleParams &style)
+        {
+            const int dx = end.x - start.x;
+            const int dy = end.y - start.y;
+            const int distance = std::max(std::abs(dx), std::abs(dy));
+            const int maxBend = std::clamp(distance / 3, 3, 12);
+            const int bend = randomBetween(rng, -maxBend, maxBend);
+
+            Point control{(start.x + end.x) / 2, (start.y + end.y) / 2};
+            if (std::abs(dx) >= std::abs(dy))
+                control.y += bend;
+            else
+                control.x += bend;
+            control.x = std::clamp(control.x, 3, kZoneLast - 3);
+            control.y = std::clamp(control.y, 3, kZoneLast - 3);
+
+            const int steps = std::max(1, distance * 2);
+            const int denominator = steps * steps;
+            int radius = randomBetween(rng, style.minCorridorRadius,
+                                       style.maxCorridorRadius);
+            for (int step = 0; step <= steps; ++step)
+            {
+                if (step > 0 && step % 9 == 0)
                 {
-                    chunk.set(edgeX, y, Tile::Empty); // the opening in the ring
-                    chunk.set(inner, y, Tile::Empty); // and the cell just inside it
+                    radius += randomBetween(rng, -1, 1);
+                    radius = std::clamp(radius, style.minCorridorRadius,
+                                        style.maxCorridorRadius);
                 }
+
+                const int inverse = steps - step;
+                const int xNumerator = inverse * inverse * start.x
+                    + 2 * inverse * step * control.x + step * step * end.x;
+                const int yNumerator = inverse * inverse * start.y
+                    + 2 * inverse * step * control.y + step * step * end.y;
+                const int x = (xNumerator + denominator / 2) / denominator;
+                const int y = (yNumerator + denominator / 2) / denominator;
+                carveDisc(zone, x, y, radius);
             }
         }
 
-        void carveCrossingH(Chunk &chunk, int edgeY, const Crossing &cr)
+        void carveOrganicRoom(GeneratedZone &zone, Rng &rng, Point center, Biome biome)
         {
-            const int inner = edgeY == 0 ? 1 : kLast - 1;
-            for (int dx = -cr.half; dx <= cr.half; ++dx)
+            const int shape = static_cast<int>(rng.below(3));
+            if (shape == 0)
             {
-                const int x = cr.center + dx;
-                if (x >= 1 && x <= kLast - 1)
+                int radiusX = randomBetween(rng, 4, biome == Biome::Cavern ? 8 : 6);
+                int radiusY = randomBetween(rng, 3, biome == Biome::Cavern ? 7 : 6);
+                if (rng.chance(50))
+                    std::swap(radiusX, radiusY);
+                carveEllipse(zone, center.x, center.y, radiusX, radiusY);
+                return;
+            }
+
+            if (shape == 1)
+            {
+                const int directionX = randomBetween(rng, -1, 1);
+                int directionY = randomBetween(rng, -1, 1);
+                if (directionX == 0 && directionY == 0)
+                    directionY = 1;
+                const int length = randomBetween(rng, 8, 16);
+                const int radius = randomBetween(rng, 2, biome == Biome::Hall ? 4 : 3);
+                for (int step = -length / 2; step <= length / 2; ++step)
+                    carveDisc(zone, center.x + directionX * step,
+                              center.y + directionY * step, radius);
+                return;
+            }
+
+            const int baseRadius = randomBetween(rng, 3, biome == Biome::Cavern ? 6 : 5);
+            carveDisc(zone, center.x, center.y, baseRadius);
+            const int lobes = randomBetween(rng, 3, biome == Biome::Warren ? 7 : 5);
+            for (int lobe = 0; lobe < lobes; ++lobe)
+            {
+                const Point lobeCenter{
+                    center.x + randomBetween(rng, -7, 7),
+                    center.y + randomBetween(rng, -7, 7),
+                };
+                const int lobeRadius = randomBetween(rng, 2, 5);
+                carveCapsule(zone, center, lobeCenter, std::min(2, lobeRadius));
+                carveDisc(zone, lobeCenter.x, lobeCenter.y, lobeRadius);
+            }
+        }
+
+        void connectNodes(GeneratedZone &zone, Rng &rng, const std::vector<Point> &nodes,
+                          const StyleParams &style)
+        {
+            if (nodes.size() < 2)
+                return;
+
+            std::vector<bool> connected(nodes.size(), false);
+            connected[0] = true;
+            for (std::size_t edge = 1; edge < nodes.size(); ++edge)
+            {
+                int bestDistance = std::numeric_limits<int>::max();
+                std::size_t bestFrom = 0;
+                std::size_t bestTo = 0;
+                for (std::size_t from = 0; from < nodes.size(); ++from)
                 {
-                    chunk.set(x, edgeY, Tile::Empty);
-                    chunk.set(x, inner, Tile::Empty);
-                }
-            }
-        }
-
-        // A meandering corridor from (ax, ay) to (bx, by): each step moves strictly
-        // toward the target, but the choice of axis when both still differ is random, so
-        // the path staircases rather than running straight. Width is occasionally
-        // pinched to a single cell, giving tight chokepoints between wider stretches.
-        void carveCorridor(Chunk &chunk, Rng &rng, int ax, int ay, int bx, int by, int radius)
-        {
-            int x = ax;
-            int y = ay;
-            carveBlob(chunk, x, y, radius);
-            while (x != bx || y != by)
-            {
-                const bool canX = x != bx;
-                const bool canY = y != by;
-                const bool stepX = canX && (!canY || rng.below(2) == 0);
-                if (stepX)
-                    x += bx > x ? 1 : -1;
-                else
-                    y += by > y ? 1 : -1;
-                const int eff = (radius > 0 && rng.chance(65)) ? radius : 0;
-                carveBlob(chunk, x, y, eff);
-            }
-        }
-
-        // Turn the solid rock into banks and void by distance from the channel: the cell
-        // touching the channel is a bomb-through brick (or wall); deeper-but-shallow rock
-        // is wall; anything past the bank is void. The border ring stays solid wall
-        // (except its carved crossings), framing the chunk. Because void is always at
-        // least bankDepth (>= 1) cells from any floor, it never touches a floor cell, so
-        // it is always seen behind rock and never reachable.
-        void applyDepth(Chunk &chunk, const StyleParams &sp, Rng &rng)
-        {
-            constexpr int kCells = kChunkSize * kChunkSize;
-            std::array<int, kCells> dist;
-            dist.fill(-1);
-            std::vector<int> queue;
-            queue.reserve(kCells);
-
-            for (int y = 0; y < kChunkSize; ++y)
-                for (int x = 0; x < kChunkSize; ++x)
-                    if (chunk.at(x, y) == Tile::Empty)
+                    if (!connected[from])
+                        continue;
+                    for (std::size_t to = 0; to < nodes.size(); ++to)
                     {
-                        dist[static_cast<std::size_t>(y) * kChunkSize + x] = 0;
-                        queue.push_back(y * kChunkSize + x);
+                        if (connected[to])
+                            continue;
+                        const int dx = nodes[to].x - nodes[from].x;
+                        const int dy = nodes[to].y - nodes[from].y;
+                        const int distance = dx * dx + dy * dy;
+                        if (distance < bestDistance)
+                        {
+                            bestDistance = distance;
+                            bestFrom = from;
+                            bestTo = to;
+                        }
                     }
-
-            for (std::size_t head = 0; head < queue.size(); ++head)
-            {
-                const int idx = queue[head];
-                const int x = idx % kChunkSize;
-                const int y = idx / kChunkSize;
-                const int nb[4][2] = {{x - 1, y}, {x + 1, y}, {x, y - 1}, {x, y + 1}};
-                for (const auto &n : nb)
-                {
-                    if (n[0] < 0 || n[0] >= kChunkSize || n[1] < 0 || n[1] >= kChunkSize)
-                        continue;
-                    const std::size_t nidx = static_cast<std::size_t>(n[1]) * kChunkSize + n[0];
-                    if (dist[nidx] != -1)
-                        continue;
-                    dist[nidx] = dist[static_cast<std::size_t>(idx)] + 1;
-                    queue.push_back(static_cast<int>(nidx));
                 }
+                carveCurvedCorridor(zone, rng, nodes[bestFrom], nodes[bestTo], style);
+                connected[bestTo] = true;
             }
 
-            for (int y = 0; y < kChunkSize; ++y)
-                for (int x = 0; x < kChunkSize; ++x)
+            // Occasional chords turn the tree of rooms into local loops. They are not
+            // needed for connectivity and therefore remain purely stylistic.
+            const int extraEdges = static_cast<int>(rng.below(3));
+            for (int edge = 0; edge < extraEdges; ++edge)
+            {
+                const auto from = static_cast<std::size_t>(rng.below(
+                    static_cast<std::uint32_t>(nodes.size())));
+                const auto to = static_cast<std::size_t>(rng.below(
+                    static_cast<std::uint32_t>(nodes.size())));
+                if (from != to)
+                    carveCurvedCorridor(zone, rng, nodes[from], nodes[to], style);
+            }
+        }
+
+        bool touchesFloor(const GeneratedZone &zone, int x, int y)
+        {
+            return (x > 0 && zone.at(x - 1, y) == Tile::Empty)
+                || (x < kZoneLast && zone.at(x + 1, y) == Tile::Empty)
+                || (y > 0 && zone.at(x, y - 1) == Tile::Empty)
+                || (y < kZoneLast && zone.at(x, y + 1) == Tile::Empty);
+        }
+
+        // A 3/4 chamfer distance is a cheap integer approximation of Euclidean distance.
+        // Unlike the old Manhattan flood it follows rounded chambers without producing
+        // conspicuous diamond banks.
+        void applyBanks(GeneratedZone &zone, Rng &rng, const StyleParams &style)
+        {
+            constexpr int kFar = 1'000'000;
+            std::array<int, kZoneCells> distance;
+            for (int y = 0; y < kZoneSize; ++y)
+                for (int x = 0; x < kZoneSize; ++x)
+                    distance[static_cast<std::size_t>(y) * kZoneSize + x]
+                        = zone.at(x, y) == Tile::Empty ? 0 : kFar;
+
+            auto relax = [&distance](int x, int y, int nx, int ny, int cost)
+            {
+                if (nx < 0 || nx >= kZoneSize || ny < 0 || ny >= kZoneSize)
+                    return;
+                const auto index = static_cast<std::size_t>(y) * kZoneSize + x;
+                const auto neighbour = static_cast<std::size_t>(ny) * kZoneSize + nx;
+                distance[index] = std::min(distance[index], distance[neighbour] + cost);
+            };
+
+            for (int y = 0; y < kZoneSize; ++y)
+                for (int x = 0; x < kZoneSize; ++x)
                 {
-                    if (chunk.at(x, y) == Tile::Empty)
+                    relax(x, y, x - 1, y, 3);
+                    relax(x, y, x, y - 1, 3);
+                    relax(x, y, x - 1, y - 1, 4);
+                    relax(x, y, x + 1, y - 1, 4);
+                }
+            for (int y = kZoneLast; y >= 0; --y)
+                for (int x = kZoneLast; x >= 0; --x)
+                {
+                    relax(x, y, x + 1, y, 3);
+                    relax(x, y, x, y + 1, 3);
+                    relax(x, y, x + 1, y + 1, 4);
+                    relax(x, y, x - 1, y + 1, 4);
+                }
+
+            const int bankLimit = style.bankDepth * 3;
+            for (int y = 0; y < kZoneSize; ++y)
+                for (int x = 0; x < kZoneSize; ++x)
+                {
+                    if (zone.at(x, y) == Tile::Empty)
                         continue;
-                    if (x == 0 || y == 0 || x == kLast || y == kLast)
-                        continue; // solid frame
-                    const int d = dist[static_cast<std::size_t>(y) * kChunkSize + x];
-                    if (d == 1)
-                        chunk.set(x, y, rng.chance(sp.brickPct) ? Tile::Brick : Tile::Wall);
-                    else if (d <= sp.bankDepth)
-                        chunk.set(x, y, Tile::Wall);
+                    const int d = distance[static_cast<std::size_t>(y) * kZoneSize + x];
+                    if (d <= 3 && touchesFloor(zone, x, y))
+                        zone.set(x, y, rng.chance(style.brickPct) ? Tile::Brick : Tile::Wall);
+                    else if (d <= bankLimit)
+                        zone.set(x, y, Tile::Wall);
                     else
-                        chunk.set(x, y, Tile::Void);
+                        zone.set(x, y, Tile::Void);
                 }
         }
 
-        // Sparse bomb-through cover sitting in open floor. A candidate qualifies only if
-        // its whole 3x3 neighbourhood is floor: bricking a cell whose eight neighbours
-        // are all floor can never partition the channel (the orthogonal neighbours stay
-        // connected around it via the corners), so islands never seal a corridor — even
-        // where two of them border the same cell. The odd/odd lattice keeps them spaced.
-        bool openThreeByThree(const Chunk &chunk, int cx, int cy)
+        bool openThreeByThree(const GeneratedZone &zone, int centerX, int centerY)
         {
-            for (int dy = -1; dy <= 1; ++dy)
-                for (int dx = -1; dx <= 1; ++dx)
-                    if (chunk.at(cx + dx, cy + dy) != Tile::Empty)
+            for (int y = centerY - 1; y <= centerY + 1; ++y)
+                for (int x = centerX - 1; x <= centerX + 1; ++x)
+                    if (zone.at(x, y) != Tile::Empty)
                         return false;
             return true;
         }
 
-        void placeIslands(Chunk &chunk, Rng &rng, const StyleParams &sp)
+        bool brickNearby(const GeneratedZone &zone, int centerX, int centerY)
         {
-            for (int y = 3; y <= kLast - 3; ++y)
-                for (int x = 3; x <= kLast - 3; ++x)
+            for (int y = centerY - 2; y <= centerY + 2; ++y)
+                for (int x = centerX - 2; x <= centerX + 2; ++x)
+                    if (zone.at(x, y) == Tile::Brick)
+                        return true;
+            return false;
+        }
+
+        void placeFloorIslands(GeneratedZone &zone, std::uint64_t seed,
+                               const StyleParams &style)
+        {
+            const int globalMinX = zone.zoneX() * kZoneSize - kZoneSize / 2;
+            const int globalMinY = zone.zoneY() * kZoneSize - kZoneSize / 2;
+            for (int y = 3; y < kZoneLast - 2; ++y)
+                for (int x = 3; x < kZoneLast - 2; ++x)
                 {
-                    if (x % 2 != 1 || y % 2 != 1)
+                    const int globalX = globalMinX + x;
+                    const int globalY = globalMinY + y;
+                    if (zone.zoneX() == 0 && zone.zoneY() == 0
+                        && std::abs(globalX - 1) <= 4 && std::abs(globalY - 1) <= 4)
                         continue;
-                    if (!openThreeByThree(chunk, x, y))
+                    if (coordinateValue(seed, globalX, globalY,
+                                        0xDB4F0B9175AE2165ULL) % 100
+                        >= static_cast<std::uint64_t>(style.islandPct))
                         continue;
-                    if (rng.chance(sp.islandPct))
-                        chunk.set(x, y, Tile::Brick);
+                    if (openThreeByThree(zone, x, y) && !brickNearby(zone, x, y))
+                        zone.set(x, y, Tile::Brick);
                 }
+        }
+
+        Biome biomeForZone(std::uint64_t seed, int zoneX, int zoneY)
+        {
+            // One province spans several generation zones, so visual character persists
+            // for hundreds of tiles instead of changing at every streamed chunk.
+            const int provinceX = floorDiv(zoneX, kProvinceZones);
+            const int provinceY = floorDiv(zoneY, kProvinceZones);
+            return static_cast<Biome>(coordinateValue(seed, provinceX, provinceY,
+                0x8CB92BA72F3D8DD7ULL) % kBiomeCount);
+        }
+
+        GeneratedZone generateZone(std::uint64_t seed, int zoneX, int zoneY)
+        {
+            const Biome biome = biomeForZone(seed, zoneX, zoneY);
+            GeneratedZone zone(zoneX, zoneY, biome);
+            Rng rng(coordinateValue(seed, zoneX, zoneY, 0x4F1BBCDCBFA54001ULL));
+            const int tier = std::min(std::max(std::abs(zoneX), std::abs(zoneY)), kMaxTier);
+            const StyleParams style = styleFor(biome, tier);
+            const Point here{zoneX, zoneY};
+            std::vector<Point> nodes;
+
+            const Point west{zoneX - 1, zoneY};
+            if (zonesConnected(seed, here, west))
+            {
+                const Portal portal = portalFor(edgeValue(seed, here, west,
+                    0xE7037ED1A0B428DBULL));
+                carvePortalVertical(zone, 0, portal);
+                nodes.push_back({1, portal.center});
+            }
+
+            const Point east{zoneX + 1, zoneY};
+            if (zonesConnected(seed, here, east))
+            {
+                const Portal portal = portalFor(edgeValue(seed, here, east,
+                    0xE7037ED1A0B428DBULL));
+                carvePortalVertical(zone, kZoneLast, portal);
+                nodes.push_back({kZoneLast - 1, portal.center});
+            }
+
+            const Point north{zoneX, zoneY - 1};
+            if (zonesConnected(seed, here, north))
+            {
+                const Portal portal = portalFor(edgeValue(seed, here, north,
+                    0xE7037ED1A0B428DBULL));
+                carvePortalHorizontal(zone, 0, portal);
+                nodes.push_back({portal.center, 1});
+            }
+
+            const Point south{zoneX, zoneY + 1};
+            if (zonesConnected(seed, here, south))
+            {
+                const Portal portal = portalFor(edgeValue(seed, here, south,
+                    0xE7037ED1A0B428DBULL));
+                carvePortalHorizontal(zone, kZoneLast, portal);
+                nodes.push_back({portal.center, kZoneLast - 1});
+            }
+
+            const int roomCount = randomBetween(rng, style.minRooms, style.maxRooms);
+            for (int room = 0; room < roomCount; ++room)
+            {
+                const Point center{
+                    randomBetween(rng, 9, kZoneLast - 9),
+                    randomBetween(rng, 9, kZoneLast - 9),
+                };
+                carveOrganicRoom(zone, rng, center, biome);
+                nodes.push_back(center);
+            }
+
+            if (zoneX == 0 && zoneY == 0)
+            {
+                constexpr Point spawn{kZoneSize / 2 + 1, kZoneSize / 2 + 1};
+                carveDisc(zone, spawn.x, spawn.y, 3);
+                nodes.push_back(spawn);
+            }
+
+            connectNodes(zone, rng, nodes, style);
+            applyBanks(zone, rng, style);
+            placeFloorIslands(zone, seed, style);
+            return zone;
         }
     }
 
@@ -275,61 +607,18 @@ namespace pyrelite
 
     Chunk generateChunk(std::uint64_t seed, int chunkX, int chunkY)
     {
-        Rng rng(chunkSeed(seed, chunkX, chunkY));
-        const Biome biome = static_cast<Biome>(rng.below(kBiomeCount));
-        Chunk chunk(chunkX, chunkY, biome);
-        const StyleParams sp = styleFor(biome, worldTier(chunkX, chunkY));
+        const int zoneX = zoneOfChunk(chunkX);
+        const int zoneY = zoneOfChunk(chunkY);
+        const GeneratedZone zone = generateZone(seed, zoneX, zoneY);
+        Chunk chunk(chunkX, chunkY, zone.biome());
 
-        // 1. Start solid: the rock the channel is cut from.
+        const int localChunkX = chunkX - zoneMinChunk(zoneX);
+        const int localChunkY = chunkY - zoneMinChunk(zoneY);
+        const int sourceX = localChunkX * kChunkSize;
+        const int sourceY = localChunkY * kChunkSize;
         for (int y = 0; y < kChunkSize; ++y)
             for (int x = 0; x < kChunkSize; ++x)
-                chunk.set(x, y, Tile::Wall);
-
-        // 2. Seam crossings — shared with each neighbour, so the channel lines up across
-        //    every seam. A boundary is identified by its larger-side chunk index + axis.
-        const Crossing west  = crossingFrom(seamValue(seed, chunkX,     chunkY,     0));
-        const Crossing east  = crossingFrom(seamValue(seed, chunkX + 1, chunkY,     0));
-        const Crossing north = crossingFrom(seamValue(seed, chunkX,     chunkY,     1));
-        const Crossing south = crossingFrom(seamValue(seed, chunkX,     chunkY + 1, 1));
-        carveCrossingV(chunk, 0, west);
-        carveCrossingV(chunk, kLast, east);
-        carveCrossingH(chunk, 0, north);
-        carveCrossingH(chunk, kLast, south);
-
-        // 3. Meander every crossing to a common jittered hub: one connected channel.
-        const int hubX = std::clamp(kCenter + jitter(rng), 4, kLast - 4);
-        const int hubY = std::clamp(kCenter + jitter(rng), 4, kLast - 4);
-        carveBlob(chunk, hubX, hubY, std::max(1, sp.corridorRadius));
-        carveCorridor(chunk, rng, 1,            west.center,  hubX, hubY, sp.corridorRadius);
-        carveCorridor(chunk, rng, kLast - 1,    east.center,  hubX, hubY, sp.corridorRadius);
-        carveCorridor(chunk, rng, north.center, 1,            hubX, hubY, sp.corridorRadius);
-        carveCorridor(chunk, rng, south.center, kLast - 1,    hubX, hubY, sp.corridorRadius);
-
-        // 4. Occasional wider chambers, each linked back to the channel.
-        for (int i = 0; i < sp.chamberCount; ++i)
-        {
-            const int chx = std::clamp(3 + static_cast<int>(rng.below(kChunkSize - 6)), 3, kLast - 3);
-            const int chy = std::clamp(3 + static_cast<int>(rng.below(kChunkSize - 6)), 3, kLast - 3);
-            carveBlob(chunk, chx, chy, 1 + static_cast<int>(rng.below(2)));
-            carveCorridor(chunk, rng, chx, chy, hubX, hubY, sp.corridorRadius);
-        }
-
-        // 5. Origin spawn pocket: a guaranteed-clear corner linked to the channel, so
-        //    the first run starts in the open and can walk out without bombing.
-        if (chunkX == 0 && chunkY == 0)
-        {
-            chunk.set(1, 1, Tile::Empty);
-            chunk.set(2, 1, Tile::Empty);
-            chunk.set(1, 2, Tile::Empty);
-            carveCorridor(chunk, rng, 2, 1, hubX, hubY, 0);
-        }
-
-        // 6. Carve banks and void from the distance to the channel.
-        applyDepth(chunk, sp, rng);
-
-        // 7. Bomb-through island cover in the open stretches.
-        placeIslands(chunk, rng, sp);
-
+                chunk.set(x, y, zone.at(sourceX + x, sourceY + y));
         return chunk;
     }
 } // namespace pyrelite

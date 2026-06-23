@@ -15,6 +15,8 @@ using namespace pyrelite;
 
 namespace
 {
+    constexpr int kZoneChunks = 4;
+
     // Fold a chunk's tiles into a 64-bit signature (FNV-1a, order-sensitive) so a
     // generated layout can be pinned exactly across builds and platforms — the
     // "stable starting seed" regression guard.
@@ -110,6 +112,31 @@ namespace
 
     bool isEmpty(Tile t) { return t == Tile::Empty; }
     bool notSolid(Tile t) { return !isSolid(t); }
+
+    int zoneMinChunk(int zoneCoord)
+    {
+        // Generation zones are centred around the world origin: zone zero contains
+        // chunks [-2, 1], so the spawn does not sit next to a generation boundary.
+        return zoneCoord * kZoneChunks - kZoneChunks / 2;
+    }
+
+    int emptyCrossingsOnVerticalZoneEdge(std::uint64_t seed, int westZoneX, int zoneY)
+    {
+        const int westChunkX = zoneMinChunk(westZoneX) + kZoneChunks - 1;
+        const int eastChunkX = westChunkX + 1;
+        int crossings = 0;
+        for (int chunkOffset = 0; chunkOffset < kZoneChunks; ++chunkOffset)
+        {
+            const int chunkY = zoneMinChunk(zoneY) + chunkOffset;
+            const Chunk west = generateChunk(seed, westChunkX, chunkY);
+            const Chunk east = generateChunk(seed, eastChunkX, chunkY);
+            for (int y = 0; y < kChunkSize; ++y)
+                if (west.at(kChunkSize - 1, y) == Tile::Empty
+                    && east.at(0, y) == Tile::Empty)
+                    ++crossings;
+        }
+        return crossings;
+    }
 }
 
 TEST(WorldGenTest, SameSeedAndCoordsSameChunk)
@@ -141,8 +168,8 @@ TEST(WorldGenTest, NeighbouringChunksDiffer)
 TEST(WorldGenTest, AllStylesAppearAcrossChunks)
 {
     std::set<Biome> styles;
-    for (int cy = 0; cy < 12; ++cy)
-        for (int cx = 0; cx < 12; ++cx)
+    for (int cy = -24; cy < 24; ++cy)
+        for (int cx = -24; cx < 24; ++cx)
             styles.insert(generateChunk(1, cx, cy).biome());
     EXPECT_EQ(styles.size(), static_cast<std::size_t>(kBiomeCount));
 }
@@ -155,7 +182,7 @@ TEST(WorldGenTest, ChannelIsOneConnectedComponentWithoutBombing)
     // replaces the old fixed-doorway spine.
     for (std::uint64_t seed = 1; seed <= 6; ++seed)
     {
-        const Region r = materialize(seed, -1, -1, 3, 3);
+        const Region r = materialize(seed, -6, -6, 12, 12);
         const int reached = floodCount(r, firstWhere(r, isEmpty), isEmpty);
         EXPECT_EQ(reached, countIf(r, isEmpty)) << "seed " << seed;
     }
@@ -168,31 +195,94 @@ TEST(WorldGenTest, PlayableAreaIsReachableByBombing)
     // brick is ever sealed off behind solid rock/void.
     for (std::uint64_t seed = 1; seed <= 6; ++seed)
     {
-        const Region r = materialize(seed, -1, -1, 3, 3);
+        const Region r = materialize(seed, -6, -6, 12, 12);
         const int reached = floodCount(r, firstWhere(r, notSolid), notSolid);
         EXPECT_EQ(reached, countIf(r, notSolid)) << "seed " << seed;
     }
 }
 
-TEST(WorldGenTest, SeamCrossingsAlignAcrossNeighbours)
+TEST(WorldGenTest, ZoneEdgesAreSelective)
 {
-    // A chunk's channel openings sit at cells shared with the neighbour's, because the
-    // crossing is a pure function of the SHARED seam identity. So a floor opening on one
-    // chunk's edge always faces a floor opening on the adjoining edge — connectivity by
-    // construction, with no neighbour queries.
-    const std::pair<int, int> coords[] = {{0, 0}, {2, 3}, {-4, 1}, {-1, -1}};
-    for (auto [cx, cy] : coords)
-    {
-        const Chunk c = generateChunk(7, cx, cy);
-        const Chunk east = generateChunk(7, cx + 1, cy);
-        const Chunk south = generateChunk(7, cx, cy + 1);
-        for (int i = 0; i < kChunkSize; ++i)
+    // The old generator opened every chunk edge, forcing each chunk into the same
+    // four-way cross. A zone graph must contain both connected and closed boundaries.
+    bool foundOpen = false;
+    bool foundClosed = false;
+    for (int zy = -3; zy <= 3; ++zy)
+        for (int zx = -3; zx < 3; ++zx)
         {
-            EXPECT_EQ(c.at(kChunkSize - 1, i) == Tile::Empty, east.at(0, i) == Tile::Empty)
-                << "east seam row " << i << " at " << cx << "," << cy;
-            EXPECT_EQ(c.at(i, kChunkSize - 1) == Tile::Empty, south.at(i, 0) == Tile::Empty)
-                << "south seam col " << i << " at " << cx << "," << cy;
+            const int crossings = emptyCrossingsOnVerticalZoneEdge(7, zx, zy);
+            foundOpen |= crossings > 0;
+            foundClosed |= crossings == 0;
         }
+    EXPECT_TRUE(foundOpen);
+    EXPECT_TRUE(foundClosed);
+}
+
+TEST(WorldGenTest, SharedZoneCrossingsAlignExactly)
+{
+    // Active portals are derived from the shared boundary identity. Both independently
+    // generated zones therefore carve exactly the same rows, while a closed edge stays
+    // closed on both sides.
+    for (int zy = -2; zy <= 2; ++zy)
+        for (int zx = -2; zx < 2; ++zx)
+            for (int chunkOffset = 0; chunkOffset < kZoneChunks; ++chunkOffset)
+            {
+                const int westChunkX = zoneMinChunk(zx) + kZoneChunks - 1;
+                const int eastChunkX = westChunkX + 1;
+                const int chunkY = zoneMinChunk(zy) + chunkOffset;
+                const Chunk west = generateChunk(7, westChunkX, chunkY);
+                const Chunk east = generateChunk(7, eastChunkX, chunkY);
+                for (int y = 0; y < kChunkSize; ++y)
+                    EXPECT_EQ(west.at(kChunkSize - 1, y) == Tile::Empty,
+                              east.at(0, y) == Tile::Empty)
+                        << "zone edge " << zx << "," << zy << " row "
+                        << chunkOffset * kChunkSize + y;
+            }
+
+    for (int zy = -2; zy < 2; ++zy)
+        for (int zx = -2; zx <= 2; ++zx)
+            for (int chunkOffset = 0; chunkOffset < kZoneChunks; ++chunkOffset)
+            {
+                const int northChunkY = zoneMinChunk(zy) + kZoneChunks - 1;
+                const int southChunkY = northChunkY + 1;
+                const int chunkX = zoneMinChunk(zx) + chunkOffset;
+                const Chunk north = generateChunk(7, chunkX, northChunkY);
+                const Chunk south = generateChunk(7, chunkX, southChunkY);
+                for (int x = 0; x < kChunkSize; ++x)
+                    EXPECT_EQ(north.at(x, kChunkSize - 1) == Tile::Empty,
+                              south.at(x, 0) == Tile::Empty)
+                        << "zone edge " << zx << "," << zy << " column "
+                        << chunkOffset * kChunkSize + x;
+            }
+}
+
+TEST(WorldGenTest, ChunkEdgesInsideZoneAreNotRockFrames)
+{
+    // Chunks are storage slices only. Their internal edges must not reintroduce the
+    // conspicuous Wall frame that made the old world look like a square grid.
+    for (std::uint64_t seed = 1; seed <= 4; ++seed)
+    {
+        const Region zone = materialize(seed, zoneMinChunk(0), zoneMinChunk(0),
+                                        kZoneChunks, kZoneChunks);
+        int wallPairs = 0;
+        int pairs = 0;
+        for (int seam = 1; seam < kZoneChunks; ++seam)
+        {
+            const int edge = seam * kChunkSize;
+            for (int i = 0; i < zone.width; ++i)
+            {
+                const auto verticalLeft = static_cast<std::size_t>(i) * zone.width + edge - 1;
+                const auto verticalRight = verticalLeft + 1;
+                const auto horizontalTop = static_cast<std::size_t>(edge - 1) * zone.width + i;
+                const auto horizontalBottom = horizontalTop + zone.width;
+                wallPairs += zone.tiles[verticalLeft] == Tile::Wall
+                    && zone.tiles[verticalRight] == Tile::Wall;
+                wallPairs += zone.tiles[horizontalTop] == Tile::Wall
+                    && zone.tiles[horizontalBottom] == Tile::Wall;
+                pairs += 2;
+            }
+        }
+        EXPECT_LT(wallPairs, pairs * 3 / 4) << "seed " << seed;
     }
 }
 
@@ -273,11 +363,11 @@ TEST(WorldGenTest, GoldenSeedsAreStable)
     // are expected to change; an UNINTENDED change is a determinism regression.
     struct Golden { std::uint64_t seed; int cx; int cy; std::uint64_t sig; };
     const Golden golden[] = {
-        {1, 0, 0, 13931823529882201580ULL},
-        {2, 0, 0, 4720691713657001490ULL},
-        {3, 0, 0, 15593927046287269645ULL},
-        {1, 1, 0, 4257396582767645368ULL},
-        {1, -1, -1, 7608924436878331803ULL},
+        {1, 0, 0, 9039680880718754929ULL},
+        {2, 0, 0, 9071980198742279077ULL},
+        {3, 0, 0, 10817396676755354310ULL},
+        {1, 1, 0, 16021764148982968270ULL},
+        {1, -1, -1, 11402122804634447066ULL},
     };
     for (const Golden &g : golden)
         EXPECT_EQ(signature(generateChunk(g.seed, g.cx, g.cy)), g.sig)
