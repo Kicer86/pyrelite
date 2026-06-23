@@ -337,22 +337,28 @@ TEST(WorldGenTest, VoidNeverTouchesFloor)
 {
     // The abyss is always seen behind rock: no floor cell is ever orthogonally adjacent
     // to a Void cell, so Void can never be walked into, bombed into, or pathed through.
-    const Region r = materialize(3, -1, -1, 3, 3);
-    for (int y = 0; y < r.height; ++y)
-        for (int x = 0; x < r.width; ++x)
-        {
-            const std::size_t idx = static_cast<std::size_t>(y) * r.width + x;
-            if (r.tiles[idx] != Tile::Empty)
-                continue;
-            const std::pair<int, int> nb[] = {{x - 1, y}, {x + 1, y}, {x, y - 1}, {x, y + 1}};
-            for (auto [nx, ny] : nb)
+    // Checked across several seeds and a region spanning multiple zone seams, where an
+    // independently-banked neighbour could otherwise expose void beside a portal.
+    for (std::uint64_t seed = 1; seed <= 8; ++seed)
+    {
+        const Region r = materialize(seed, -3, -3, 6, 6);
+        for (int y = 0; y < r.height; ++y)
+            for (int x = 0; x < r.width; ++x)
             {
-                if (nx < 0 || nx >= r.width || ny < 0 || ny >= r.height)
+                const std::size_t idx = static_cast<std::size_t>(y) * r.width + x;
+                if (r.tiles[idx] != Tile::Empty)
                     continue;
-                EXPECT_NE(r.tiles[static_cast<std::size_t>(ny) * r.width + nx], Tile::Void)
-                    << "floor " << x << "," << y << " touches void";
+                const std::pair<int, int> nb[] = {
+                    {x - 1, y}, {x + 1, y}, {x, y - 1}, {x, y + 1}};
+                for (auto [nx, ny] : nb)
+                {
+                    if (nx < 0 || nx >= r.width || ny < 0 || ny >= r.height)
+                        continue;
+                    EXPECT_NE(r.tiles[static_cast<std::size_t>(ny) * r.width + nx], Tile::Void)
+                        << "seed " << seed << " floor " << x << "," << y << " touches void";
+                }
             }
-        }
+    }
 }
 
 TEST(WorldGenTest, SpawnPocketIsClear)
