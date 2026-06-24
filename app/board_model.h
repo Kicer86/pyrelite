@@ -62,6 +62,9 @@ public:
     Q_INVOKABLE int tierAt(int x, int y) const;
     Q_INVOKABLE int bombX(int index) const;
     Q_INVOKABLE int bombY(int index) const;
+    // Fraction of the fuse left, 1 just-placed down to 0 at detonation. The view
+    // uses it to tighten the bomb's pulse and redden it as the blast nears.
+    Q_INVOKABLE qreal bombFuse(int index) const;
     Q_INVOKABLE int explosionX(int index) const;
     Q_INVOKABLE int explosionY(int index) const;
     Q_INVOKABLE int powerUpX(int index) const;

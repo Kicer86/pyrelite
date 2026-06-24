@@ -254,17 +254,15 @@ Window {
             Repeater {
                 model: board.bombCount
 
-                Rectangle {
+                BombSprite {
                     required property int index
 
-                    width: root.cell * 0.6
-                    height: root.cell * 0.6
-                    radius: width / 2
-                    color: "#222222"
-                    border.color: "#000000"
-                    border.width: 2
-                    x: board.bombX(index) * root.cell + (root.cell - width) / 2
-                    y: board.bombY(index) * root.cell + (root.cell - height) / 2
+                    cell: root.cell
+                    // bombFuse is a plain call, so re-read on revision (bumped every
+                    // tick) to track the fuse burning down toward detonation.
+                    fuse: { board.revision; return board.bombFuse(index) }
+                    x: board.bombX(index) * root.cell
+                    y: board.bombY(index) * root.cell
                 }
             }
 

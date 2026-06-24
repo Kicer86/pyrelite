@@ -1,6 +1,7 @@
 
 #include "board_model.h"
 
+#include <algorithm>
 #include <optional>
 #include <cstdint>
 
@@ -16,6 +17,9 @@ namespace
     constexpr std::uint64_t kSeed = 1; // fixed for now; run seeds come later
     constexpr int kStepMs = 16;        // ~60 Hz simulation quantum
     constexpr double kMaxFrameMs = 250; // cap catch-up after the render loop stalls
+    // Mirrors core/game.cpp's kBombFuseMs: the full fuse a bomb is placed with. Only
+    // used here to normalise the remaining fuse into a 0..1 fraction for the view.
+    constexpr int kBombFuseMs = 2000;
 
     // Presentation only: the enemy archetype -> how it looks. This is the single
     // place enemy art lives, kept out of the headless core and out of the QML. Today
@@ -208,6 +212,12 @@ int BoardModel::bombX(int index) const
 int BoardModel::bombY(int index) const
 {
     return m_game.bombs().at(index).y;
+}
+
+qreal BoardModel::bombFuse(int index) const
+{
+    const qreal left = m_game.bombs().at(index).fuseMs / static_cast<qreal>(kBombFuseMs);
+    return std::clamp(left, qreal{0}, qreal{1});
 }
 
 int BoardModel::explosionX(int index) const
