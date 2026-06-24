@@ -40,6 +40,27 @@ namespace
         return QStringLiteral("#d23b3b"); // roamer — red
     }
 
+    // Presentation only: the enemy archetype -> which silhouette the sprite draws.
+    // Parallel to enemyColorFor and equally the single seam for enemy art; adding an
+    // archetype adds one case here and one branch in EnemySprite.qml, nothing in core.
+    QString enemyKindFor(pyrelite::EnemyType type)
+    {
+        switch (type)
+        {
+        case pyrelite::EnemyType::Chaser:
+            return QStringLiteral("chaser");
+        case pyrelite::EnemyType::Bouncer:
+            return QStringLiteral("bouncer");
+        case pyrelite::EnemyType::Hunter:
+            return QStringLiteral("hunter");
+        case pyrelite::EnemyType::Ghost:
+            return QStringLiteral("ghost");
+        case pyrelite::EnemyType::Wanderer:
+            break;
+        }
+        return QStringLiteral("wanderer");
+    }
+
     // Presentation only: a perk's player-facing label + crystal colour. Like
     // enemyColorFor, this is the single place perk art lives, kept out of the headless
     // core; adding a perk adds one case here. The palette is a warm "loot" family
@@ -222,6 +243,11 @@ qreal BoardModel::enemyY(int index) const
 QString BoardModel::enemyColor(int index) const
 {
     return enemyColorFor(m_game.enemies().at(index)->type());
+}
+
+QString BoardModel::enemyKind(int index) const
+{
+    return enemyKindFor(m_game.enemies().at(index)->type());
 }
 
 int BoardModel::perkCrystalX(int index) const

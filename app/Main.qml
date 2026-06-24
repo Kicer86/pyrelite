@@ -288,24 +288,21 @@ Window {
             Repeater {
                 model: board.enemyCount
 
-                Rectangle {
+                EnemySprite {
                     required property int index
 
                     // Appearance comes entirely from the model — no per-archetype
                     // logic here. Re-read on revision (bumped every tick): a kill
                     // shifts indices, so the enemy at this slot can change.
-                    readonly property color fill: { board.revision; return board.enemyColor(index) }
-
-                    width: root.cell * 0.7
-                    height: root.cell * 0.7
-                    radius: width / 2
-                    color: fill
-                    border.color: Qt.darker(fill, 2.2)
-                    border.width: 2
+                    cell: root.cell
+                    fill: { board.revision; return board.enemyColor(index) }
+                    kind: { board.revision; return board.enemyKind(index) }
                     // enemyX/Y are plain calls, not notifying properties, so depend
                     // on revision (bumped every tick) to re-read the moving position.
-                    x: { board.revision; return board.enemyX(index) * root.cell + (root.cell - width) / 2 }
-                    y: { board.revision; return board.enemyY(index) * root.cell + (root.cell - height) / 2 }
+                    cellX: { board.revision; return board.enemyX(index) }
+                    cellY: { board.revision; return board.enemyY(index) }
+                    x: cellX * root.cell
+                    y: cellY * root.cell
                 }
             }
 

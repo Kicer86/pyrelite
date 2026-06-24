@@ -71,10 +71,11 @@ public:
     // straight from the core (like the player) with no view-side easing.
     Q_INVOKABLE qreal enemyX(int index) const;
     Q_INVOKABLE qreal enemyY(int index) const;
-    // How to draw the enemy at index. The view renders whatever this returns, so it
-    // carries no per-archetype logic; this is the single seam where enemy art lives
-    // (a placeholder colour today, a sprite/animation source once art lands).
+    // How to draw the enemy at index. The view renders whatever these return, so it
+    // carries no per-archetype logic; this is the single seam where enemy art lives.
+    // enemyColor is the body tint; enemyKind names the silhouette the sprite picks.
     Q_INVOKABLE QString enemyColor(int index) const;
+    Q_INVOKABLE QString enemyKind(int index) const;
     // A floor perk crystal's tile position, fill colour and label. Like enemyColor,
     // this is the single app-side seam where perk presentation lives; the core only
     // names the type.

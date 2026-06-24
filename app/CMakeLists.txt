@@ -31,6 +31,7 @@ qt_add_qml_module(pyrelite
     QML_FILES
         Main.qml
         PlayerSprite.qml
+        EnemySprite.qml
 )
 
 target_link_libraries(pyrelite PRIVATE core Qt6::Quick)
