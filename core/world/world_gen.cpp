@@ -4,6 +4,7 @@
 #include <array>
 #include <cstdint>
 #include <cstdlib>
+#include <iterator>
 #include <limits>
 #include <vector>
 
@@ -665,6 +666,310 @@ namespace pyrelite
                 0x8CB92BA72F3D8DD7ULL) % kBiomeCount);
         }
 
+        // A large open chamber carved out of a zone. Unlike the small organic rooms it
+        // is then packed with a destructible BRICK pattern, so the player meets a roomy
+        // arena full of things to blow up (and cover to fight behind) rather than empty
+        // floor. Recorded by ellipse so the fill pass can address exactly its footprint.
+        struct Arena
+        {
+            Point center;
+            int radiusX;
+            int radiusY;
+        };
+
+        // The brick layouts an arena can be packed with. Noise stays in the catalog so
+        // some arenas still read as organic rubble; the rest are recognisable shapes that
+        // make a chamber a landmark instead of yet another patch of random bricks.
+        enum class BrickPattern { Noise, Lattice, Rings, Cross, Border, Clusters, Pillars };
+
+        bool inEllipse(Point center, int radiusX, int radiusY, int x, int y)
+        {
+            const long long dx = x - center.x;
+            const long long dy = y - center.y;
+            const long long rx2 = static_cast<long long>(radiusX) * radiusX;
+            const long long ry2 = static_cast<long long>(radiusY) * radiusY;
+            return dx * dx * ry2 + dy * dy * rx2 <= rx2 * ry2;
+        }
+
+        // A footprint cell on the ellipse boundary: one whose four-neighbourhood leaves
+        // the footprint. The fill keeps the rim Empty so the arena always stays walkable
+        // around its edge and through-traffic between its corridors is preserved.
+        bool isArenaRim(const Arena &arena, int x, int y)
+        {
+            return !inEllipse(arena.center, arena.radiusX, arena.radiusY, x - 1, y)
+                || !inEllipse(arena.center, arena.radiusX, arena.radiusY, x + 1, y)
+                || !inEllipse(arena.center, arena.radiusX, arena.radiusY, x, y - 1)
+                || !inEllipse(arena.center, arena.radiusX, arena.radiusY, x, y + 1);
+        }
+
+        // Biome-weighted pattern choice: each biome favours layouts that reinforce its
+        // character (Pillars gets pillar fields, Thicket gets dense rubble, Hall gets
+        // grand rings, ...), so biomes finally differ in SHAPE, not only in numbers.
+        BrickPattern choosePattern(Biome biome, std::uint64_t value)
+        {
+            switch (biome)
+            {
+            case Biome::Hall:
+            {
+                static constexpr BrickPattern c[] = {
+                    BrickPattern::Rings, BrickPattern::Border,
+                    BrickPattern::Cross, BrickPattern::Noise};
+                return c[value % std::size(c)];
+            }
+            case Biome::Warren:
+            {
+                static constexpr BrickPattern c[] = {
+                    BrickPattern::Clusters, BrickPattern::Lattice, BrickPattern::Noise};
+                return c[value % std::size(c)];
+            }
+            case Biome::Pillars:
+            {
+                static constexpr BrickPattern c[] = {
+                    BrickPattern::Pillars, BrickPattern::Lattice, BrickPattern::Cross};
+                return c[value % std::size(c)];
+            }
+            case Biome::Thicket:
+            {
+                static constexpr BrickPattern c[] = {
+                    BrickPattern::Noise, BrickPattern::Clusters, BrickPattern::Lattice};
+                return c[value % std::size(c)];
+            }
+            case Biome::Cavern:
+            {
+                static constexpr BrickPattern c[] = {
+                    BrickPattern::Noise, BrickPattern::Rings, BrickPattern::Border};
+                return c[value % std::size(c)];
+            }
+            }
+            return BrickPattern::Noise;
+        }
+
+        int arenaNoiseDensity(Biome biome)
+        {
+            switch (biome)
+            {
+            case Biome::Thicket: return 55;
+            case Biome::Warren:  return 46;
+            case Biome::Cavern:  return 38;
+            case Biome::Hall:    return 34;
+            case Biome::Pillars: return 36;
+            }
+            return 42;
+        }
+
+        // Packing an arena with brick can seal it off: its connecting artery is bricked
+        // over, or a pattern leaves an enclosed Empty pocket. Restore a single connected
+        // floor by carving the shortest path from the main component to each stranded one
+        // — but only through cells the fill itself could have produced, never the zone
+        // boundary, the origin spawn ring, Void, or any cell touching Void. Every brick
+        // the fill placed sat on former Empty floor, which the prior stages guarantee is
+        // never adjacent to Void, so this can reconnect a sealed arena without ever
+        // exposing the abyss or opening a second spawn exit.
+        void reconnectFloorThroughFill(Zone &zone, bool isOrigin)
+        {
+            auto touchesVoid = [&](int x, int y)
+            {
+                return (x > 0 && zone.at(x - 1, y) == Tile::Void)
+                    || (x < kZoneLast && zone.at(x + 1, y) == Tile::Void)
+                    || (y > 0 && zone.at(x, y - 1) == Tile::Void)
+                    || (y < kZoneLast && zone.at(x, y + 1) == Tile::Void);
+            };
+
+            while (true)
+            {
+                int seed = -1;
+                for (int index = 0; index < kZoneCells && seed < 0; ++index)
+                    if (zone.at(index % kZoneSize, index / kZoneSize) == Tile::Empty)
+                        seed = index;
+                if (seed < 0)
+                    return;
+
+                std::array<bool, kZoneCells> reached{};
+                std::vector<int> flood{seed};
+                for (std::size_t head = 0; head < flood.size(); ++head)
+                {
+                    const int index = flood[head];
+                    if (reached[static_cast<std::size_t>(index)])
+                        continue;
+                    const int x = index % kZoneSize;
+                    const int y = index / kZoneSize;
+                    if (zone.at(x, y) != Tile::Empty)
+                        continue;
+                    reached[static_cast<std::size_t>(index)] = true;
+                    if (x > 0)         flood.push_back(index - 1);
+                    if (x < kZoneLast) flood.push_back(index + 1);
+                    if (y > 0)         flood.push_back(index - kZoneSize);
+                    if (y < kZoneLast) flood.push_back(index + kZoneSize);
+                }
+
+                int target = -1;
+                for (int index = 0; index < kZoneCells; ++index)
+                    if (zone.at(index % kZoneSize, index / kZoneSize) == Tile::Empty
+                        && !reached[static_cast<std::size_t>(index)])
+                    {
+                        target = index;
+                        break;
+                    }
+                if (target < 0)
+                    return;
+
+                std::array<int, kZoneCells> previous;
+                previous.fill(-1);
+                std::vector<int> queue;
+                queue.reserve(kZoneCells);
+                for (int index = 0; index < kZoneCells; ++index)
+                    if (reached[static_cast<std::size_t>(index)])
+                    {
+                        previous[static_cast<std::size_t>(index)] = -2;
+                        queue.push_back(index);
+                    }
+
+                int connection = -1;
+                for (std::size_t head = 0; head < queue.size() && connection < 0; ++head)
+                {
+                    const int index = queue[head];
+                    const int x = index % kZoneSize;
+                    const int y = index / kZoneSize;
+                    const int neighbours[] = {
+                        x > 0 ? index - 1 : -1,
+                        x < kZoneLast ? index + 1 : -1,
+                        y > 0 ? index - kZoneSize : -1,
+                        y < kZoneLast ? index + kZoneSize : -1,
+                    };
+                    for (int neighbour : neighbours)
+                    {
+                        if (neighbour < 0
+                            || previous[static_cast<std::size_t>(neighbour)] != -1)
+                            continue;
+                        const int nx = neighbour % kZoneSize;
+                        const int ny = neighbour / kZoneSize;
+                        const bool empty = zone.at(nx, ny) == Tile::Empty;
+                        if (!empty)
+                        {
+                            const bool boundary = nx == 0 || nx == kZoneLast
+                                || ny == 0 || ny == kZoneLast;
+                            if (boundary || zone.at(nx, ny) == Tile::Void
+                                || touchesVoid(nx, ny)
+                                || (isOrigin && protectedSpawnWall(nx, ny)))
+                                continue;
+                        }
+
+                        previous[static_cast<std::size_t>(neighbour)] = index;
+                        if (empty && !reached[static_cast<std::size_t>(neighbour)])
+                        {
+                            connection = neighbour;
+                            break;
+                        }
+                        queue.push_back(neighbour);
+                    }
+                }
+
+                if (connection < 0)
+                    return;
+                for (int index = connection;
+                     previous[static_cast<std::size_t>(index)] >= 0;
+                     index = previous[static_cast<std::size_t>(index)])
+                    zone.set(index % kZoneSize, index / kZoneSize, Tile::Empty);
+            }
+        }
+
+        void fillArena(Zone &zone, std::uint64_t seed, const Arena &arena, Biome biome)
+        {
+            const int rX = arena.radiusX;
+            const int rY = arena.radiusY;
+            const int cx = arena.center.x;
+            const int cy = arena.center.y;
+            const BrickPattern pattern = choosePattern(biome,
+                coordinateValue(seed, cx, cy, 0x51A2C3D4E5F60718ULL));
+            const int density = arenaNoiseDensity(biome);
+            const int globalMinX = zone.zoneX() * kZoneSize - kZoneSize / 2;
+            const int globalMinY = zone.zoneY() * kZoneSize - kZoneSize / 2;
+            const long long rx2 = static_cast<long long>(rX) * rX;
+            const long long ry2 = static_cast<long long>(rY) * rY;
+            const long long maxR2 = rx2 * ry2;
+
+            // Only ever convert open interior floor: keep the rim Empty and never touch a
+            // cell that is not currently floor, so the fill stays inside its footprint.
+            auto place = [&](int x, int y, Tile tile)
+            {
+                if (tile == Tile::Empty
+                    || x < 1 || x >= kZoneLast || y < 1 || y >= kZoneLast
+                    || !inEllipse(arena.center, rX, rY, x, y)
+                    || zone.at(x, y) != Tile::Empty
+                    || isArenaRim(arena, x, y))
+                    return;
+                zone.set(x, y, tile);
+            };
+
+            auto noiseBrick = [&](int x, int y, int pct)
+            {
+                return static_cast<int>(coordinateValue(seed, globalMinX + x,
+                    globalMinY + y, 0x3243F6A8885A308DULL) % 100) < pct;
+            };
+
+            if (pattern == BrickPattern::Clusters)
+            {
+                Rng rng(coordinateValue(seed, cx, cy, 0x2B7E151628AED2A6ULL));
+                const int blobs = 3 + static_cast<int>(rng.below(4));
+                for (int blob = 0; blob < blobs; ++blob)
+                {
+                    const Point at{
+                        cx + randomBetween(rng, -(rX - 2), rX - 2),
+                        cy + randomBetween(rng, -(rY - 2), rY - 2)};
+                    const int radius = randomBetween(rng, 1, 3);
+                    for (int dy = -radius; dy <= radius; ++dy)
+                        for (int dx = -radius; dx <= radius; ++dx)
+                            if (dx * dx + dy * dy <= radius * radius)
+                                place(at.x + dx, at.y + dy, Tile::Brick);
+                }
+                return;
+            }
+
+            for (int y = cy - rY; y <= cy + rY; ++y)
+                for (int x = cx - rX; x <= cx + rX; ++x)
+                {
+                    const int dx = x - cx;
+                    const int dy = y - cy;
+                    const long long r2 = static_cast<long long>(dx) * dx * ry2
+                        + static_cast<long long>(dy) * dy * rx2;
+                    const int frac = maxR2 > 0
+                        ? static_cast<int>(r2 * 100 / maxR2) : 0;
+                    Tile tile = Tile::Empty;
+                    switch (pattern)
+                    {
+                    case BrickPattern::Noise:
+                        if (noiseBrick(x, y, density))
+                            tile = Tile::Brick;
+                        break;
+                    case BrickPattern::Lattice:
+                        if ((dx & 1) == 0 && (dy & 1) == 0)
+                            tile = Tile::Brick;
+                        break;
+                    case BrickPattern::Rings:
+                        if ((frac / 22) % 2 == 0 && !(dy == 0 && dx > 0))
+                            tile = Tile::Brick;
+                        break;
+                    case BrickPattern::Cross:
+                        if (std::abs(dx) <= 1 || std::abs(dy) <= 1)
+                            tile = Tile::Brick;
+                        break;
+                    case BrickPattern::Border:
+                        if (frac >= 55)
+                            tile = Tile::Brick;
+                        break;
+                    case BrickPattern::Pillars:
+                        if (dx % 4 == 0 && dy % 4 == 0)
+                            tile = Tile::Wall;
+                        else if (noiseBrick(x, y, 32))
+                            tile = Tile::Brick;
+                        break;
+                    case BrickPattern::Clusters:
+                        break;
+                    }
+                    place(x, y, tile);
+                }
+        }
+
         Zone buildZone(std::uint64_t seed, int zoneX, int zoneY)
         {
             const Biome biome = biomeForZone(seed, zoneX, zoneY);
@@ -718,8 +1023,62 @@ namespace pyrelite
                 nodes.push_back({portal.center, kZoneLast - 1});
             }
 
-            const int roomCount = randomBetween(rng, style.minRooms, style.maxRooms);
             std::vector<Point> roomCenters;
+
+            // One or two large arenas anchor the zone: roomy, brick-packed chambers that
+            // give the labyrinth memorable landmarks. They are placed first so the small
+            // rooms keep their distance, and joined like any other node so an artery
+            // leads into them.
+            std::vector<Arena> arenas;
+            const int arenaCount = 1 + static_cast<int>(rng.below(2));
+            for (int arena = 0; arena < arenaCount; ++arena)
+            {
+                const int radiusX = randomBetween(rng, 7, 10);
+                const int radiusY = randomBetween(rng, 6, 8);
+                const int margin = std::max(radiusX, radiusY) + 2;
+                Point center{0, 0};
+                bool found = false;
+                for (int attempt = 0; attempt < 40 && !found; ++attempt)
+                {
+                    center = {
+                        randomBetween(rng, margin, kZoneLast - margin),
+                        randomBetween(rng, margin, kZoneLast - margin),
+                    };
+                    const int spawnDx = center.x - kSpawn.x;
+                    const int spawnDy = center.y - kSpawn.y;
+                    // Keep the whole arena ellipse clear of the spawn seal ring so the
+                    // fill never bricks an exit cell or opens a second chamber exit.
+                    const int spawnClear =
+                        kSpawnSealOuterRadius + std::max(radiusX, radiusY) + 2;
+                    if (isOrigin
+                        && spawnDx * spawnDx + spawnDy * spawnDy < spawnClear * spawnClear)
+                        continue;
+
+                    found = true;
+                    for (const Point &other : roomCenters)
+                    {
+                        const int dx = center.x - other.x;
+                        const int dy = center.y - other.y;
+                        if (dx * dx + dy * dy < 16 * 16)
+                        {
+                            found = false;
+                            break;
+                        }
+                    }
+                }
+                if (!found)
+                    continue;
+                carveEllipse(zone, center.x, center.y, radiusX, radiusY);
+                arenas.push_back({center, radiusX, radiusY});
+                roomCenters.push_back(center);
+                nodes.push_back(center);
+            }
+
+            // Each arena is worth roughly two small rooms of open space, so trade them
+            // off to keep the zone's open-floor budget (and the cave-not-field invariant).
+            const int roomCount = std::max(2,
+                randomBetween(rng, style.minRooms, style.maxRooms)
+                    - 2 * static_cast<int>(arenas.size()));
             for (int room = 0; room < roomCount; ++room)
             {
                 Point center{0, 0};
@@ -789,6 +1148,9 @@ namespace pyrelite
             applyBanks(zone, rng, style);
             if (isOrigin)
                 sealSpawnChamber(zone, spawn);
+            for (const Arena &arena : arenas)
+                fillArena(zone, seed, arena, biome);
+            reconnectFloorThroughFill(zone, isOrigin);
             placeFloorIslands(zone, seed, style);
             return zone;
         }

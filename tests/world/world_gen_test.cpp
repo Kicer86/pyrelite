@@ -333,6 +333,46 @@ TEST(WorldGenTest, CaveNetworkDoesNotCollapseIntoAnOpenField)
     }
 }
 
+TEST(WorldGenTest, ZonesContainRoomyArenaChambers)
+{
+    // Every zone is anchored by one or two large arenas. Whatever brick pattern packs a
+    // given arena, the chamber itself is a roomy pocket of rock-free space far wider than
+    // any corridor: it admits an inscribed disc of non-Void tiles that the narrow
+    // passages and their thin banks never could. Checked on a non-origin zone so the
+    // sealed spawn chamber cannot stand in for an arena.
+    constexpr int kArenaDiscRadius = 7;
+    auto hasRoomyChamber = [](const Region &zone)
+    {
+        for (int cy = 0; cy < zone.height; ++cy)
+            for (int cx = 0; cx < zone.width; ++cx)
+            {
+                bool clear = true;
+                for (int dy = -kArenaDiscRadius; dy <= kArenaDiscRadius && clear; ++dy)
+                    for (int dx = -kArenaDiscRadius; dx <= kArenaDiscRadius && clear; ++dx)
+                    {
+                        if (dx * dx + dy * dy > kArenaDiscRadius * kArenaDiscRadius)
+                            continue;
+                        const int x = cx + dx;
+                        const int y = cy + dy;
+                        if (x < 0 || y < 0 || x >= zone.width || y >= zone.height
+                            || zone.tiles[static_cast<std::size_t>(y) * zone.width + x]
+                                == Tile::Void)
+                            clear = false;
+                    }
+                if (clear)
+                    return true;
+            }
+        return false;
+    };
+
+    for (std::uint64_t seed = 1; seed <= 8; ++seed)
+    {
+        const Region zone = materialize(seed, zoneMinChunk(2), zoneMinChunk(0),
+                                        kZoneChunks, kZoneChunks);
+        EXPECT_TRUE(hasRoomyChamber(zone)) << "seed " << seed;
+    }
+}
+
 TEST(WorldGenTest, VoidNeverTouchesFloor)
 {
     // The abyss is always seen behind rock: no floor cell is ever orthogonally adjacent
@@ -465,11 +505,11 @@ TEST(WorldGenTest, GoldenSeedsAreStable)
     // are expected to change; an UNINTENDED change is a determinism regression.
     struct Golden { std::uint64_t seed; int cx; int cy; std::uint64_t sig; };
     const Golden golden[] = {
-        {1, 0, 0, 10913117633329357609ULL},
-        {2, 0, 0, 12743841410683285576ULL},
-        {3, 0, 0, 9265130629001305244ULL},
-        {1, 1, 0, 18160186679589006905ULL},
-        {1, -1, -1, 3388144709600821010ULL},
+        {1, 0, 0, 707348581913096066ULL},
+        {2, 0, 0, 15987644042394766286ULL},
+        {3, 0, 0, 16643534575326783970ULL},
+        {1, 1, 0, 15468943342674645611ULL},
+        {1, -1, -1, 3928926359074671741ULL},
     };
     for (const Golden &g : golden)
         EXPECT_EQ(signature(generateChunk(g.seed, g.cx, g.cy)), g.sig)
