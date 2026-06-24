@@ -130,6 +130,10 @@ namespace pyrelite
         {
             int minCorridorRadius;
             int maxCorridorRadius;
+            // The backbone (spanning tree) of a zone is carved wide so main routes read
+            // as arteries, while loop chords stay at the narrow corridor radius. This is
+            // what breaks the uniform "thin maze" look without opening the whole zone.
+            int arteryRadius;
             int bankDepth;
             int brickPct;
             int minRooms;
@@ -141,11 +145,11 @@ namespace pyrelite
         {
             switch (tier)
             {
-            case 0:  return {1, 1, 3, 30, 4, 7, 5};
-            case 1:  return {1, 1, 3, 28, 4, 7, 6};
-            case 2:  return {1, 1, 3, 25, 4, 7, 7};
-            case 3:  return {1, 1, 2, 22, 4, 6, 8};
-            default: return {1, 1, 2, 20, 3, 6, 9};
+            case 0:  return {1, 1, 2, 3, 30, 4, 7, 5};
+            case 1:  return {1, 1, 2, 3, 28, 4, 7, 6};
+            case 2:  return {1, 1, 2, 3, 25, 4, 7, 7};
+            case 3:  return {1, 1, 2, 2, 22, 4, 6, 8};
+            default: return {1, 1, 2, 2, 20, 3, 6, 9};
             }
         }
 
@@ -158,6 +162,7 @@ namespace pyrelite
                 style.minRooms = std::max(3, style.minRooms - 1);
                 style.maxRooms = std::max(style.minRooms, style.maxRooms - 2);
                 style.maxCorridorRadius += 1;
+                style.arteryRadius += 1;
                 break;
             case Biome::Warren:
                 style.minRooms += 2;
@@ -174,6 +179,7 @@ namespace pyrelite
                 style.minRooms += 1;
                 style.maxRooms += 2;
                 style.maxCorridorRadius += 1;
+                style.arteryRadius += 1;
                 break;
             }
             return style;
@@ -407,14 +413,14 @@ namespace pyrelite
         // seeded worlds bit-identical across platforms. Circular stamps hide the tile
         // staircase and let the passage breathe between narrow and broad stretches.
         void carveCurvedCorridor(Zone &zone, Rng &rng, Point start, Point end,
-                                 const StyleParams &style)
+                                 int radiusMin, int radiusMax)
         {
             const int dx = end.x - start.x;
             const int dy = end.y - start.y;
             const int distance = std::max(std::abs(dx), std::abs(dy));
             if (distance == 0)
             {
-                carveDisc(zone, start.x, start.y, style.minCorridorRadius);
+                carveDisc(zone, start.x, start.y, radiusMin);
                 return;
             }
 
@@ -429,15 +435,13 @@ namespace pyrelite
 
             const int steps = std::max(1, distance * 2);
             const int denominator = steps * steps;
-            int radius = randomBetween(rng, style.minCorridorRadius,
-                                       style.maxCorridorRadius);
+            int radius = randomBetween(rng, radiusMin, radiusMax);
             for (int step = 0; step <= steps; ++step)
             {
                 if (step > 0 && step % 9 == 0)
                 {
                     radius += randomBetween(rng, -1, 1);
-                    radius = std::clamp(radius, style.minCorridorRadius,
-                                        style.maxCorridorRadius);
+                    radius = std::clamp(radius, radiusMin, radiusMax);
                 }
 
                 const int inverse = steps - step;
@@ -525,12 +529,16 @@ namespace pyrelite
                         }
                     }
                 }
-                carveCurvedCorridor(zone, rng, nodes[bestFrom], nodes[bestTo], style);
+                // The tree edges are the zone's backbone, so they are carved wide as
+                // arteries; only the optional chords below stay at the narrow radius.
+                carveCurvedCorridor(zone, rng, nodes[bestFrom], nodes[bestTo],
+                                    style.arteryRadius - 1, style.arteryRadius);
                 connected[bestTo] = true;
             }
 
             // Occasional chords turn the tree of rooms into local loops. They are not
-            // needed for connectivity and therefore remain purely stylistic.
+            // needed for connectivity and therefore remain purely stylistic; narrow so
+            // the backbone arteries stay the legible main routes.
             const int extraEdges = static_cast<int>(rng.below(2));
             for (int edge = 0; edge < extraEdges; ++edge)
             {
@@ -539,7 +547,8 @@ namespace pyrelite
                 const auto to = static_cast<std::size_t>(rng.below(
                     static_cast<std::uint32_t>(nodes.size())));
                 if (from != to)
-                    carveCurvedCorridor(zone, rng, nodes[from], nodes[to], style);
+                    carveCurvedCorridor(zone, rng, nodes[from], nodes[to],
+                                        style.minCorridorRadius, style.maxCorridorRadius);
             }
         }
 

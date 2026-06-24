@@ -465,11 +465,11 @@ TEST(WorldGenTest, GoldenSeedsAreStable)
     // are expected to change; an UNINTENDED change is a determinism regression.
     struct Golden { std::uint64_t seed; int cx; int cy; std::uint64_t sig; };
     const Golden golden[] = {
-        {1, 0, 0, 4715738312930184701ULL},
-        {2, 0, 0, 12999543873769618585ULL},
-        {3, 0, 0, 18033708525029231873ULL},
-        {1, 1, 0, 4742152759258982225ULL},
-        {1, -1, -1, 6002469526093962785ULL},
+        {1, 0, 0, 10913117633329357609ULL},
+        {2, 0, 0, 12743841410683285576ULL},
+        {3, 0, 0, 9265130629001305244ULL},
+        {1, 1, 0, 18160186679589006905ULL},
+        {1, -1, -1, 3388144709600821010ULL},
     };
     for (const Golden &g : golden)
         EXPECT_EQ(signature(generateChunk(g.seed, g.cx, g.cy)), g.sig)
