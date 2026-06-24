@@ -310,16 +310,14 @@ Window {
             }
 
             // Player — position comes from the core in fractional tile units, so the
-            // continuous movement renders directly (no Behavior easing needed).
-            Rectangle {
-                width: root.cell * 0.7
-                height: root.cell * 0.7
-                radius: width / 2
-                color: "#e0d040"
-                border.color: "#3a3210"
-                border.width: 2
-                x: board.playerX * root.cell + (root.cell - width) / 2
-                y: board.playerY * root.cell + (root.cell - height) / 2
+            // continuous movement renders directly (no Behavior easing needed). The
+            // sprite derives its heading and walk cycle from those moving coordinates.
+            PlayerSprite {
+                cell: root.cell
+                cellX: board.playerX
+                cellY: board.playerY
+                x: board.playerX * root.cell
+                y: board.playerY * root.cell
             }
         }
 
