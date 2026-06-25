@@ -6,6 +6,7 @@ add_library(core STATIC
     world/world_gen.cpp
     world/world.cpp
     game/game.cpp
+    game/zone_spawns.cpp
     enemies/enemy.cpp
     enemies/wanderer.cpp
     enemies/chaser.cpp
