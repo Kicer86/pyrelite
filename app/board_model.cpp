@@ -1,6 +1,7 @@
 
 #include "board_model.h"
 
+#include <algorithm>
 #include <optional>
 #include <cstdint>
 
@@ -16,6 +17,11 @@ namespace
     constexpr std::uint64_t kSeed = 1; // fixed for now; run seeds come later
     constexpr int kStepMs = 16;        // ~60 Hz simulation quantum
     constexpr double kMaxFrameMs = 250; // cap catch-up after the render loop stalls
+    // Mirrors core/game.cpp's kBombFuseMs / kExplosionMs: the full fuse a bomb is
+    // placed with and the lifetime of a flame. Used only here to normalise the
+    // remaining time into a 0..1 fraction for the view.
+    constexpr int kBombFuseMs = 2000;
+    constexpr int kExplosionMs = 400;
 
     // Presentation only: the enemy archetype -> how it looks. This is the single
     // place enemy art lives, kept out of the headless core and out of the QML. Today
@@ -38,6 +44,27 @@ namespace
             break;
         }
         return QStringLiteral("#d23b3b"); // roamer — red
+    }
+
+    // Presentation only: the enemy archetype -> which silhouette the sprite draws.
+    // Parallel to enemyColorFor and equally the single seam for enemy art; adding an
+    // archetype adds one case here and one branch in EnemySprite.qml, nothing in core.
+    QString enemyKindFor(pyrelite::EnemyType type)
+    {
+        switch (type)
+        {
+        case pyrelite::EnemyType::Chaser:
+            return QStringLiteral("chaser");
+        case pyrelite::EnemyType::Bouncer:
+            return QStringLiteral("bouncer");
+        case pyrelite::EnemyType::Hunter:
+            return QStringLiteral("hunter");
+        case pyrelite::EnemyType::Ghost:
+            return QStringLiteral("ghost");
+        case pyrelite::EnemyType::Wanderer:
+            break;
+        }
+        return QStringLiteral("wanderer");
     }
 
     // Presentation only: a perk's player-facing label + crystal colour. Like
@@ -189,6 +216,12 @@ int BoardModel::bombY(int index) const
     return m_game.bombs().at(index).y;
 }
 
+qreal BoardModel::bombFuse(int index) const
+{
+    const qreal left = m_game.bombs().at(index).fuseMs / static_cast<qreal>(kBombFuseMs);
+    return std::clamp(left, qreal{0}, qreal{1});
+}
+
 int BoardModel::explosionX(int index) const
 {
     return m_game.explosions().at(index).x;
@@ -197,6 +230,12 @@ int BoardModel::explosionX(int index) const
 int BoardModel::explosionY(int index) const
 {
     return m_game.explosions().at(index).y;
+}
+
+qreal BoardModel::explosionLife(int index) const
+{
+    const qreal left = m_game.explosions().at(index).lifeMs / static_cast<qreal>(kExplosionMs);
+    return std::clamp(left, qreal{0}, qreal{1});
 }
 
 int BoardModel::powerUpX(int index) const
@@ -222,6 +261,11 @@ qreal BoardModel::enemyY(int index) const
 QString BoardModel::enemyColor(int index) const
 {
     return enemyColorFor(m_game.enemies().at(index)->type());
+}
+
+QString BoardModel::enemyKind(int index) const
+{
+    return enemyKindFor(m_game.enemies().at(index)->type());
 }
 
 int BoardModel::perkCrystalX(int index) const

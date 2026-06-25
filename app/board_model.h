@@ -62,8 +62,14 @@ public:
     Q_INVOKABLE int tierAt(int x, int y) const;
     Q_INVOKABLE int bombX(int index) const;
     Q_INVOKABLE int bombY(int index) const;
+    // Fraction of the fuse left, 1 just-placed down to 0 at detonation. The view
+    // uses it to tighten the bomb's pulse and redden it as the blast nears.
+    Q_INVOKABLE qreal bombFuse(int index) const;
     Q_INVOKABLE int explosionX(int index) const;
     Q_INVOKABLE int explosionY(int index) const;
+    // Fraction of the flame's life left, 1 at ignition down to 0 as it dies. The
+    // view uses it to burst the flame in and fade it out on the core's own clock.
+    Q_INVOKABLE qreal explosionLife(int index) const;
     Q_INVOKABLE int powerUpX(int index) const;
     Q_INVOKABLE int powerUpY(int index) const;
     Q_INVOKABLE int powerUpType(int index) const;
@@ -71,10 +77,11 @@ public:
     // straight from the core (like the player) with no view-side easing.
     Q_INVOKABLE qreal enemyX(int index) const;
     Q_INVOKABLE qreal enemyY(int index) const;
-    // How to draw the enemy at index. The view renders whatever this returns, so it
-    // carries no per-archetype logic; this is the single seam where enemy art lives
-    // (a placeholder colour today, a sprite/animation source once art lands).
+    // How to draw the enemy at index. The view renders whatever these return, so it
+    // carries no per-archetype logic; this is the single seam where enemy art lives.
+    // enemyColor is the body tint; enemyKind names the silhouette the sprite picks.
     Q_INVOKABLE QString enemyColor(int index) const;
+    Q_INVOKABLE QString enemyKind(int index) const;
     // A floor perk crystal's tile position, fill colour and label. Like enemyColor,
     // this is the single app-side seam where perk presentation lives; the core only
     // names the type.

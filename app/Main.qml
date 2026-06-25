@@ -151,31 +151,23 @@ Window {
 
                 model: cols * rows
 
-                Rectangle {
+                TerrainTile {
                     required property int index
 
                     readonly property int gx: terrain.originX + (index % terrain.cols)
                     readonly property int gy: terrain.originY + Math.floor(index / terrain.cols)
                     // Re-read on scroll (gx/gy change) and on board changes (revision),
                     // so streamed-in tiles and bombed-open bricks both show.
-                    readonly property int tile: {
+                    tile: {
                         board.revision
                         return board.tileAt(gx, gy)
                     }
-                    readonly property var pal: root.tierColors[
+                    pal: root.tierColors[
                         Math.min(board.tierAt(gx, gy), root.tierColors.length - 1)]
 
-                    width: root.cell
-                    height: root.cell
+                    cell: root.cell
                     x: gx * root.cell
                     y: gy * root.cell
-                    color: tile === BoardModel.Wall ? pal.rock
-                         : tile === BoardModel.Brick ? pal.brick
-                         : tile === BoardModel.Void ? pal.abyss
-                         : pal.floor
-                    // No grid line over the void, so it reads as continuous open space.
-                    border.color: tile === BoardModel.Void ? pal.abyss : "#2a2a2a"
-                    border.width: 1
                 }
             }
 
@@ -254,17 +246,15 @@ Window {
             Repeater {
                 model: board.bombCount
 
-                Rectangle {
+                BombSprite {
                     required property int index
 
-                    width: root.cell * 0.6
-                    height: root.cell * 0.6
-                    radius: width / 2
-                    color: "#222222"
-                    border.color: "#000000"
-                    border.width: 2
-                    x: board.bombX(index) * root.cell + (root.cell - width) / 2
-                    y: board.bombY(index) * root.cell + (root.cell - height) / 2
+                    cell: root.cell
+                    // bombFuse is a plain call, so re-read on revision (bumped every
+                    // tick) to track the fuse burning down toward detonation.
+                    fuse: { board.revision; return board.bombFuse(index) }
+                    x: board.bombX(index) * root.cell
+                    y: board.bombY(index) * root.cell
                 }
             }
 
@@ -272,15 +262,15 @@ Window {
             Repeater {
                 model: board.explosionCount
 
-                Rectangle {
+                FlameSprite {
                     required property int index
 
-                    width: root.cell * 0.92
-                    height: root.cell * 0.92
-                    radius: 4
-                    color: "#ff8c1a"
-                    x: board.explosionX(index) * root.cell + (root.cell - width) / 2
-                    y: board.explosionY(index) * root.cell + (root.cell - height) / 2
+                    cell: root.cell
+                    // explosionLife is a plain call, so re-read on revision (bumped
+                    // every tick) to follow the flame burning out.
+                    life: { board.revision; return board.explosionLife(index) }
+                    x: board.explosionX(index) * root.cell
+                    y: board.explosionY(index) * root.cell
                 }
             }
 
@@ -288,38 +278,33 @@ Window {
             Repeater {
                 model: board.enemyCount
 
-                Rectangle {
+                EnemySprite {
                     required property int index
 
                     // Appearance comes entirely from the model — no per-archetype
                     // logic here. Re-read on revision (bumped every tick): a kill
                     // shifts indices, so the enemy at this slot can change.
-                    readonly property color fill: { board.revision; return board.enemyColor(index) }
-
-                    width: root.cell * 0.7
-                    height: root.cell * 0.7
-                    radius: width / 2
-                    color: fill
-                    border.color: Qt.darker(fill, 2.2)
-                    border.width: 2
+                    cell: root.cell
+                    fill: { board.revision; return board.enemyColor(index) }
+                    kind: { board.revision; return board.enemyKind(index) }
                     // enemyX/Y are plain calls, not notifying properties, so depend
                     // on revision (bumped every tick) to re-read the moving position.
-                    x: { board.revision; return board.enemyX(index) * root.cell + (root.cell - width) / 2 }
-                    y: { board.revision; return board.enemyY(index) * root.cell + (root.cell - height) / 2 }
+                    cellX: { board.revision; return board.enemyX(index) }
+                    cellY: { board.revision; return board.enemyY(index) }
+                    x: cellX * root.cell
+                    y: cellY * root.cell
                 }
             }
 
             // Player — position comes from the core in fractional tile units, so the
-            // continuous movement renders directly (no Behavior easing needed).
-            Rectangle {
-                width: root.cell * 0.7
-                height: root.cell * 0.7
-                radius: width / 2
-                color: "#e0d040"
-                border.color: "#3a3210"
-                border.width: 2
-                x: board.playerX * root.cell + (root.cell - width) / 2
-                y: board.playerY * root.cell + (root.cell - height) / 2
+            // continuous movement renders directly (no Behavior easing needed). The
+            // sprite derives its heading and walk cycle from those moving coordinates.
+            PlayerSprite {
+                cell: root.cell
+                cellX: board.playerX
+                cellY: board.playerY
+                x: board.playerX * root.cell
+                y: board.playerY * root.cell
             }
         }
 
