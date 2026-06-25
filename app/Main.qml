@@ -192,44 +192,14 @@ Window {
             Repeater {
                 model: board.perkCrystalCount
 
-                Item {
+                PerkCrystalSprite {
                     required property int index
-                    readonly property string fill: { board.revision; return board.perkCrystalColor(index) }
 
-                    width: root.cell
-                    height: root.cell
+                    cell: root.cell
+                    fill: { board.revision; return board.perkCrystalColor(index) }
+                    label: { board.revision; return board.perkCrystalName(index) }
                     x: { board.revision; return board.perkCrystalX(index) * root.cell }
                     y: { board.revision; return board.perkCrystalY(index) * root.cell }
-
-                    Rectangle {
-                        anchors.centerIn: parent
-                        width: root.cell * 0.5
-                        height: width
-                        radius: 4
-                        rotation: 45
-                        color: parent.fill
-                        border.color: "#fff1c0"
-                        border.width: 3
-
-                        SequentialAnimation on scale {
-                            loops: Animation.Infinite
-                            running: true
-                            NumberAnimation { from: 0.88; to: 1.12; duration: 650; easing.type: Easing.InOutSine }
-                            NumberAnimation { from: 1.12; to: 0.88; duration: 650; easing.type: Easing.InOutSine }
-                        }
-                    }
-
-                    Text {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        anchors.top: parent.top
-                        anchors.topMargin: 1
-                        text: { board.revision; return board.perkCrystalName(index) }
-                        color: "#fff1c0"
-                        font.pixelSize: 11
-                        font.bold: true
-                        style: Text.Outline
-                        styleColor: "#000000"
-                    }
                 }
             }
 
