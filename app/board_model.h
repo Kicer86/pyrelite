@@ -67,6 +67,9 @@ public:
     Q_INVOKABLE qreal bombFuse(int index) const;
     Q_INVOKABLE int explosionX(int index) const;
     Q_INVOKABLE int explosionY(int index) const;
+    // Fraction of the flame's life left, 1 at ignition down to 0 as it dies. The
+    // view uses it to burst the flame in and fade it out on the core's own clock.
+    Q_INVOKABLE qreal explosionLife(int index) const;
     Q_INVOKABLE int powerUpX(int index) const;
     Q_INVOKABLE int powerUpY(int index) const;
     Q_INVOKABLE int powerUpType(int index) const;

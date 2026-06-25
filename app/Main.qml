@@ -270,15 +270,15 @@ Window {
             Repeater {
                 model: board.explosionCount
 
-                Rectangle {
+                FlameSprite {
                     required property int index
 
-                    width: root.cell * 0.92
-                    height: root.cell * 0.92
-                    radius: 4
-                    color: "#ff8c1a"
-                    x: board.explosionX(index) * root.cell + (root.cell - width) / 2
-                    y: board.explosionY(index) * root.cell + (root.cell - height) / 2
+                    cell: root.cell
+                    // explosionLife is a plain call, so re-read on revision (bumped
+                    // every tick) to follow the flame burning out.
+                    life: { board.revision; return board.explosionLife(index) }
+                    x: board.explosionX(index) * root.cell
+                    y: board.explosionY(index) * root.cell
                 }
             }
 

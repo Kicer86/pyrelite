@@ -17,9 +17,11 @@ namespace
     constexpr std::uint64_t kSeed = 1; // fixed for now; run seeds come later
     constexpr int kStepMs = 16;        // ~60 Hz simulation quantum
     constexpr double kMaxFrameMs = 250; // cap catch-up after the render loop stalls
-    // Mirrors core/game.cpp's kBombFuseMs: the full fuse a bomb is placed with. Only
-    // used here to normalise the remaining fuse into a 0..1 fraction for the view.
+    // Mirrors core/game.cpp's kBombFuseMs / kExplosionMs: the full fuse a bomb is
+    // placed with and the lifetime of a flame. Used only here to normalise the
+    // remaining time into a 0..1 fraction for the view.
     constexpr int kBombFuseMs = 2000;
+    constexpr int kExplosionMs = 400;
 
     // Presentation only: the enemy archetype -> how it looks. This is the single
     // place enemy art lives, kept out of the headless core and out of the QML. Today
@@ -228,6 +230,12 @@ int BoardModel::explosionX(int index) const
 int BoardModel::explosionY(int index) const
 {
     return m_game.explosions().at(index).y;
+}
+
+qreal BoardModel::explosionLife(int index) const
+{
+    const qreal left = m_game.explosions().at(index).lifeMs / static_cast<qreal>(kExplosionMs);
+    return std::clamp(left, qreal{0}, qreal{1});
 }
 
 int BoardModel::powerUpX(int index) const
