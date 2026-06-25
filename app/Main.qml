@@ -175,22 +175,13 @@ Window {
             Repeater {
                 model: board.powerUpCount
 
-                Rectangle {
+                PowerUpSprite {
                     required property int index
 
-                    readonly property int kind: board.powerUpType(index)
-
-                    width: root.cell * 0.42
-                    height: root.cell * 0.42
-                    radius: 3
-                    rotation: 45
-                    color: kind === BoardModel.BombLimitPowerUp ? "#2fb8ac"
-                         : kind === BoardModel.BombRangePowerUp ? "#4f8cff"
-                         : "#d85ce6"
-                    border.color: "#111111"
-                    border.width: 2
-                    x: board.powerUpX(index) * root.cell + (root.cell - width) / 2
-                    y: board.powerUpY(index) * root.cell + (root.cell - height) / 2
+                    cell: root.cell
+                    kind: board.powerUpType(index)
+                    x: board.powerUpX(index) * root.cell
+                    y: board.powerUpY(index) * root.cell
                 }
             }
 

@@ -35,6 +35,7 @@ qt_add_qml_module(pyrelite
         BombSprite.qml
         FlameSprite.qml
         TerrainTile.qml
+        PowerUpSprite.qml
 )
 
 target_link_libraries(pyrelite PRIVATE core Qt6::Quick)
