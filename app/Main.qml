@@ -6,19 +6,27 @@ import PyreliteApp
 Window {
     id: root
 
+    property bool previewMode: false
+
     visibility: Qt.platform.os === "wasm" ? Window.FullScreen : Window.Windowed
     width: 960
     height: 820
 
-    title: "Pyrelite"
+    title: previewMode ? "Pyrelite — World Preview" : "Pyrelite"
     color: "#1b1b1b"
 
     BoardModel { id: board }
 
-    // Fixed tile size in pixels so an arena can be larger than the window; the
-    // camera (boardView below) scrolls to keep the player in view, rather than
-    // shrinking the whole board to fit one screen.
-    readonly property real cell: 48
+    // Tile size in pixels. Gameplay keeps the default scale; preview mode may change
+    // it to sample a wider/narrower world window. Generation stays on a fixed chunk
+    // radius around the camera, so a wide view can include unexplored space.
+    readonly property real defaultCell: 48
+    readonly property real minPreviewCell: 8
+    readonly property real maxPreviewCell: 96
+    property real cell: defaultCell
+    readonly property int previewChunkTiles: board.chunkTiles
+    readonly property color unknownTerrain: "#11151d"
+    readonly property color unknownGrid: "#263142"
 
     // Region palette by world tier (board.tierAt): floor channel, rock bank, bombable
     // brick, and the void abyss seen behind the rock. Tiers rise with distance from
@@ -39,6 +47,12 @@ Window {
     // and felt stiff. Both knobs below are pure feel; view-only, core untouched.
     readonly property real deadzone: 0.4   // fraction of the viewport the box spans
     readonly property real followTau: 0.12 // catch-up time constant (s); larger = floatier
+    readonly property real previewSpeed: 14 // tiles per second; intentionally faster than play
+
+    property bool previewUp: false
+    property bool previewDown: false
+    property bool previewLeft: false
+    property bool previewRight: false
 
     // Current camera offset, the source of truth: smoothed each frame (in the tick
     // below) toward cameraTarget. Initialised by recenter() once the view is sized.
@@ -70,21 +84,79 @@ Window {
         viewY = centeredOffset(scene.height, board.playerY)
     }
 
-    // Drives bomb fuses + explosions in the core, once per rendered frame.
-    // FrameAnimation is tied to the render loop (requestAnimationFrame on web),
-    // so it keeps ticking even when idle — unlike a QTimer.
+    function zoomPreview(factor) {
+        const oldCell = cell
+        const nextCell = Math.max(minPreviewCell, Math.min(maxPreviewCell, oldCell * factor))
+        if (Math.abs(nextCell - oldCell) < 0.001)
+            return
+
+        // Preserve the world coordinate under the centre of the viewport. Changing
+        // cell then makes the terrain repeater request a larger/smaller real tile area.
+        const centerWorldX = (scene.width / 2 - viewX) / oldCell
+        const centerWorldY = (scene.height / 2 - viewY) / oldCell
+        cell = nextCell
+        viewX = scene.width / 2 - centerWorldX * cell
+        viewY = scene.height / 2 - centerWorldY * cell
+    }
+
+    function setPreviewKey(key, pressed) {
+        switch (key) {
+        case Qt.Key_Up:    case Qt.Key_W: previewUp = pressed;    return true
+        case Qt.Key_Down:  case Qt.Key_S: previewDown = pressed;  return true
+        case Qt.Key_Left:  case Qt.Key_A: previewLeft = pressed;  return true
+        case Qt.Key_Right: case Qt.Key_D: previewRight = pressed; return true
+        }
+        return false
+    }
+
+    function clearPreviewKeys() {
+        previewUp = false
+        previewDown = false
+        previewLeft = false
+        previewRight = false
+    }
+
+    function advancePreview(frameTime) {
+        const horizontal = (previewLeft ? 1 : 0) - (previewRight ? 1 : 0)
+        const vertical = (previewUp ? 1 : 0) - (previewDown ? 1 : 0)
+        if (horizontal === 0 && vertical === 0)
+            return
+
+        // Keep diagonal flight at the same speed as axial flight and cap a stalled
+        // render frame so returning to the window cannot teleport the camera.
+        const diagonalScale = horizontal !== 0 && vertical !== 0 ? Math.SQRT1_2 : 1
+        const distance = previewSpeed * cell * Math.min(frameTime, 0.05) * diagonalScale
+        viewX += horizontal * distance
+        viewY += vertical * distance
+    }
+
+    onActiveChanged: {
+        if (!active)
+            clearPreviewKeys()
+    }
+
+    // Drives either free preview flight or the gameplay simulation once per rendered
+    // frame. FrameAnimation follows requestAnimationFrame on web, so it keeps ticking
+    // even when gameplay input is idle — unlike a QTimer.
     FrameAnimation {
         running: true
         onTriggered: {
-            board.setVisibleArea(terrain.originX, terrain.originY,
-                                 terrain.originX + terrain.cols - 1,
-                                 terrain.originY + terrain.rows - 1)
-            board.update(frameTime * 1000)
-            // Ease the camera toward its deadzone-constrained target. The factor is
-            // derived from frameTime so the catch-up rate is frame-rate independent.
-            const k = 1 - Math.exp(-frameTime / root.followTau)
-            root.viewX += (root.cameraTarget(root.viewX, scene.width, board.playerX) - root.viewX) * k
-            root.viewY += (root.cameraTarget(root.viewY, scene.height, board.playerY) - root.viewY) * k
+            if (root.previewMode) {
+                root.advancePreview(frameTime)
+                const centerTileX = Math.floor((scene.width / 2 - root.viewX) / root.cell)
+                const centerTileY = Math.floor((scene.height / 2 - root.viewY) / root.cell)
+                board.generatePreviewAround(centerTileX, centerTileY)
+            } else {
+                board.update(frameTime * 1000)
+                // Ease the camera toward its deadzone-constrained target. The factor is
+                // derived from frameTime so the catch-up rate is frame-rate independent.
+                const k = 1 - Math.exp(-frameTime / root.followTau)
+                root.viewX += (root.cameraTarget(root.viewX, scene.width, board.playerX) - root.viewX) * k
+                root.viewY += (root.cameraTarget(root.viewY, scene.height, board.playerY) - root.viewY) * k
+                board.setVisibleArea(terrain.originX, terrain.originY,
+                                     terrain.originX + terrain.cols - 1,
+                                     terrain.originY + terrain.rows - 1)
+            }
         }
     }
 
@@ -101,18 +173,44 @@ Window {
         // auto-repeat so a held key is one sustained press, not a stream of events.
         Keys.onPressed: (event) => {
             if (event.isAutoRepeat) { event.accepted = true; return }
+            if (root.previewMode && root.setPreviewKey(event.key, true)) {
+                event.accepted = true
+                return
+            }
+            if (root.previewMode) {
+                if (event.key === Qt.Key_Plus || event.key === Qt.Key_Equal)
+                    root.zoomPreview(1.25)
+                else if (event.key === Qt.Key_Minus || event.key === Qt.Key_Underscore)
+                    root.zoomPreview(0.8)
+                else if (event.key === Qt.Key_R)
+                    root.recenter()
+                event.accepted = true
+                return
+            }
             switch (event.key) {
             case Qt.Key_Up:    case Qt.Key_W: board.setDirection(BoardModel.Up);    event.accepted = true; break
             case Qt.Key_Down:  case Qt.Key_S: board.setDirection(BoardModel.Down);  event.accepted = true; break
             case Qt.Key_Left:  case Qt.Key_A: board.setDirection(BoardModel.Left);  event.accepted = true; break
             case Qt.Key_Right: case Qt.Key_D: board.setDirection(BoardModel.Right); event.accepted = true; break
             case Qt.Key_Space:                board.placeBomb();                    event.accepted = true; break
-            case Qt.Key_R:                    board.restart(); root.recenter();     event.accepted = true; break
+            case Qt.Key_R:
+                board.restart()
+                root.recenter()
+                event.accepted = true
+                break
             }
         }
 
         Keys.onReleased: (event) => {
             if (event.isAutoRepeat) { event.accepted = true; return }
+            if (root.previewMode && root.setPreviewKey(event.key, false)) {
+                event.accepted = true
+                return
+            }
+            if (root.previewMode) {
+                event.accepted = true
+                return
+            }
             switch (event.key) {
             case Qt.Key_Up:    case Qt.Key_W: board.clearDirection(BoardModel.Up);    event.accepted = true; break
             case Qt.Key_Down:  case Qt.Key_S: board.clearDirection(BoardModel.Down);  event.accepted = true; break
@@ -149,7 +247,9 @@ Window {
                 readonly property int originX: Math.floor(-root.viewX / root.cell) - 1
                 readonly property int originY: Math.floor(-root.viewY / root.cell) - 1
 
-                model: cols * rows
+                // Preview uses one Canvas below. Keeping thousands of Rectangle
+                // delegates alive was the dominant cost at maximum zoom-out.
+                model: root.previewMode ? 0 : cols * rows
 
                 TerrainTile {
                     required property int index
@@ -168,6 +268,110 @@ Window {
                     cell: root.cell
                     x: gx * root.cell
                     y: gy * root.cell
+                }
+            }
+
+            // Preview terrain is rendered as one scene-graph item. It repaints only
+            // when the integer tile origin, zoom, or discovered chunk set changes;
+            // sub-tile camera motion moves this cached image with boardView.
+            Canvas {
+                id: previewTerrain
+
+                visible: root.previewMode
+                antialiasing: false
+
+                readonly property int originX: terrain.originX
+                readonly property int originY: terrain.originY
+                readonly property int cols: terrain.cols
+                readonly property int rows: terrain.rows
+                readonly property real tileSize: root.cell
+                readonly property int renderedRevision: board.revision
+
+                x: originX * tileSize
+                y: originY * tileSize
+                width: cols * tileSize
+                height: rows * tileSize
+
+                onOriginXChanged: requestPaint()
+                onOriginYChanged: requestPaint()
+                onColsChanged: requestPaint()
+                onRowsChanged: requestPaint()
+                onTileSizeChanged: requestPaint()
+                onRenderedRevisionChanged: requestPaint()
+
+                onPaint: {
+                    const context = getContext("2d")
+                    context.clearRect(0, 0, width, height)
+                    context.fillStyle = root.unknownTerrain
+                    context.fillRect(0, 0, width, height)
+
+                    // Chunk-scale grid is visible only where no generated tile later
+                    // paints over it, making unexplored space unambiguous from Void.
+                    context.strokeStyle = root.unknownGrid
+                    context.lineWidth = 1
+                    context.beginPath()
+                    for (let col = 0; col <= cols; ++col) {
+                        const gx = originX + col
+                        if ((gx % root.previewChunkTiles + root.previewChunkTiles)
+                                % root.previewChunkTiles === 0) {
+                            const x = col * tileSize + 0.5
+                            context.moveTo(x, 0)
+                            context.lineTo(x, height)
+                        }
+                    }
+                    for (let row = 0; row <= rows; ++row) {
+                        const gy = originY + row
+                        if ((gy % root.previewChunkTiles + root.previewChunkTiles)
+                                % root.previewChunkTiles === 0) {
+                            const y = row * tileSize + 0.5
+                            context.moveTo(0, y)
+                            context.lineTo(width, y)
+                        }
+                    }
+                    context.stroke()
+
+                    const drawBorders = tileSize >= 14
+                    const firstChunkX = Math.floor(originX / root.previewChunkTiles)
+                    const firstChunkY = Math.floor(originY / root.previewChunkTiles)
+                    const lastChunkX = Math.floor((originX + cols - 1)
+                                                  / root.previewChunkTiles)
+                    const lastChunkY = Math.floor((originY + rows - 1)
+                                                  / root.previewChunkTiles)
+                    for (let chunkY = firstChunkY; chunkY <= lastChunkY; ++chunkY) {
+                        for (let chunkX = firstChunkX; chunkX <= lastChunkX; ++chunkX) {
+                            if (!board.previewChunkGenerated(chunkX, chunkY))
+                                continue
+
+                            const pal = root.tierColors[
+                                Math.min(board.tierAt(chunkX * root.previewChunkTiles,
+                                                      chunkY * root.previewChunkTiles),
+                                         root.tierColors.length - 1)]
+                            const firstX = Math.max(originX, chunkX * root.previewChunkTiles)
+                            const firstY = Math.max(originY, chunkY * root.previewChunkTiles)
+                            const lastX = Math.min(originX + cols,
+                                                   (chunkX + 1) * root.previewChunkTiles)
+                            const lastY = Math.min(originY + rows,
+                                                   (chunkY + 1) * root.previewChunkTiles)
+                            for (let gy = firstY; gy < lastY; ++gy) {
+                                for (let gx = firstX; gx < lastX; ++gx) {
+                                    const tile = board.previewTileAt(gx, gy)
+                                    context.fillStyle = tile === BoardModel.Wall ? pal.rock
+                                        : tile === BoardModel.Brick ? pal.brick
+                                        : tile === BoardModel.Void ? pal.abyss
+                                        : pal.floor
+                                    const x = (gx - originX) * tileSize
+                                    const y = (gy - originY) * tileSize
+                                    context.fillRect(x, y, Math.ceil(tileSize), Math.ceil(tileSize))
+                                    if (drawBorders && tile !== BoardModel.Void) {
+                                        context.strokeStyle = "#2a2a2a"
+                                        context.lineWidth = 1
+                                        context.strokeRect(x + 0.5, y + 0.5,
+                                                           tileSize - 1, tileSize - 1)
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
@@ -311,6 +515,7 @@ Window {
         // Run HUD: current level and an XP bar toward the next. Top-left, never grabs
         // input so focus-on-click still works.
         Column {
+            visible: !root.previewMode
             anchors.left: parent.left
             anchors.top: parent.top
             anchors.margins: 10
@@ -338,6 +543,29 @@ Window {
                          * Math.min(1, board.xp / Math.max(1, board.xpToNextLevel))
                     color: "#ffd24a"
                 }
+            }
+        }
+
+        Rectangle {
+            visible: root.previewMode
+            anchors.left: parent.left
+            anchors.top: parent.top
+            anchors.margins: 10
+            width: previewLabel.implicitWidth + 20
+            height: previewLabel.implicitHeight + 12
+            radius: 5
+            color: Qt.rgba(0, 0, 0, 0.72)
+            border.color: "#69d2ff"
+
+            Text {
+                id: previewLabel
+                anchors.centerIn: parent
+                text: "PREVIEW · WASD / arrows · + / − zoom · R resets view · "
+                    + Math.round(root.cell / root.defaultCell * 100) + "% zoom · "
+                    + board.previewChunkCount + " chunks · grid = unexplored"
+                color: "#9be3ff"
+                font.pixelSize: 15
+                font.bold: true
             }
         }
 

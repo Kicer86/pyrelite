@@ -1,12 +1,18 @@
 
 #pragma once
 
+#include <map>
+#include <optional>
+#include <utility>
+
 #include <QObject>
 #include <QString>
 #include <QtQml/qqmlregistration.h>
 
 #include "game/fixed_timestep.h"
 #include "game/game.h"
+#include "world/chunk.h"
+#include "world/zone_cache.h"
 
 // QML-facing adapter over the core Game: board size + tiles, the player, bombs,
 // and explosion flames. A single changed() signal (plus a bumping revision used
@@ -26,12 +32,14 @@ class BoardModel : public QObject
     Q_PROPERTY(int xp READ xp NOTIFY changed)
     Q_PROPERTY(int xpToNextLevel READ xpToNextLevel NOTIFY changed)
     Q_PROPERTY(int perkCrystalCount READ perkCrystalCount NOTIFY changed)
+    Q_PROPERTY(int previewChunkCount READ previewChunkCount NOTIFY changed)
+    Q_PROPERTY(int chunkTiles READ chunkTiles CONSTANT)
     Q_PROPERTY(int revision READ revision NOTIFY changed)
     Q_PROPERTY(State state READ state NOTIFY changed)
     Q_PROPERTY(QString version READ version CONSTANT)
 
 public:
-    enum Tile { Empty, Wall, Brick, Void };
+    enum Tile { Empty, Wall, Brick, Void, Unknown };
     Q_ENUM(Tile)
     enum PowerUp { BombLimitPowerUp, BombRangePowerUp, SpeedPowerUp };
     Q_ENUM(PowerUp)
@@ -52,11 +60,22 @@ public:
     int xp() const;
     int xpToNextLevel() const;
     int perkCrystalCount() const;
+    int previewChunkCount() const { return static_cast<int>(m_previewChunks.size()); }
+    // Tiles per world chunk, so the preview's chunk grid stays aligned with core
+    // generation without the view hard-coding the size.
+    int chunkTiles() const { return pyrelite::kChunkSize; }
     int revision() const { return m_revision; }
     State state() const;
     QString version() const;
 
     Q_INVOKABLE int tileAt(int x, int y) const;
+    // Preview-only lookup: returns Unknown unless the containing chunk has already
+    // entered the fixed generation window around the free camera. Never generates.
+    Q_INVOKABLE int previewTileAt(int x, int y) const;
+    Q_INVOKABLE bool previewChunkGenerated(int chunkX, int chunkY) const;
+    // Permanently discover a fixed chunk window around the preview camera. Its radius
+    // is independent of zoom, so zooming out exposes Unknown terrain at the edges.
+    Q_INVOKABLE void generatePreviewAround(int centerX, int centerY);
     // The world tier (difficulty/theme band) of a global tile, rising with distance
     // from spawn. The view maps it to a region palette; the policy lives once in core.
     Q_INVOKABLE int tierAt(int x, int y) const;
@@ -110,4 +129,12 @@ private:
     pyrelite::FixedTimestep m_step;
     int m_revision = 0;
     int m_activeDir = -1;
+    std::map<std::pair<int, int>, pyrelite::Chunk> m_previewChunks;
+    std::optional<std::pair<int, int>> m_previewCenterChunk;
+    // Builds each preview zone once instead of rebuilding it for every chunk it owns.
+    pyrelite::ZoneCache m_previewZones;
+    // One-entry memo for previewTileAt (see board_model.cpp). std::map keeps element
+    // pointers stable across inserts, and generatePreviewAround clears this on growth.
+    mutable std::optional<std::pair<int, int>> m_previewLookupKey;
+    mutable const pyrelite::Chunk *m_previewLookupChunk = nullptr;
 };

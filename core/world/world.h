@@ -8,6 +8,7 @@
 
 #include "world/chunk.h"
 #include "world/delta_store.h"
+#include "world/zone_cache.h"
 #include "grid/grid.h"
 #include "terrain/iterrain.h"
 
@@ -69,6 +70,9 @@ namespace pyrelite
 
         std::uint64_t m_seed;
         mutable std::map<std::pair<int, int>, Chunk> m_chunks;
+        // Memoizes generated zones so materializing a chunk does not rebuild its whole
+        // zone every time; mutable because chunk materialization happens during const at().
+        mutable ZoneCache m_zoneCache;
         DeltaStore m_deltas;
         std::optional<std::pair<int, int>> m_simulationCenter;
         std::optional<ChunkBounds> m_visibleChunks;

@@ -13,7 +13,9 @@
 #include "terrain/arena.h"
 #include "terrain/bounded_terrain.h"
 #include "grid/movement.h"
+#include "game/zone_spawns.h"
 #include "world/world.h"
+#include "world/zone.h"
 
 namespace pyrelite
 {
@@ -34,10 +36,10 @@ namespace pyrelite
         constexpr int kEnemyCount = 5;
         constexpr int kEnemySpawnMinDistance = 4;
 
-        // The streamed world seeds its starter enemies within this many tiles of the
-        // origin spawn pocket, so the player meets foes at once without scanning the
-        // (infinite) world. Per-chunk spawning across the whole world comes later.
-        constexpr int kStreamSpawnAreaTiles = 24;
+        // How far (in chunks) around the player to look for active zones. The simulation
+        // window is smaller; this is just a safe upper bound, and simulationActiveAt is
+        // what actually decides which chunks (and thus zones) are live.
+        constexpr int kZoneScanChunks = 3;
 
         // Of those, the archetype quota: a greedy Chaser, a ricocheting Bouncer, a
         // pathfinding Hunter and a wall-passing Ghost, with the rest left as random
@@ -152,10 +154,12 @@ namespace pyrelite
         , m_perkRng(seed + kPerkSeedOffset)
         , m_objective(Objective::Endless)
     {
-        // Materialize the spawn window, then seed a starter set of enemies near the
-        // origin pocket (which generateChunk guarantees is open at (1, 1)).
+        // Materialize the spawn window, then populate the zones it covers from their
+        // deterministic rosters — including the origin zone around the spawn pocket.
+        m_streamed = true;
+        m_worldSeed = seed;
         m_terrain->stream(playerX(), playerY());
-        spawnEnemiesIn(0, 0, kStreamSpawnAreaTiles, kStreamSpawnAreaTiles, kEnemyCount);
+        refreshActiveZones();
     }
 
     Tile Game::tileAt(int x, int y) const
@@ -219,11 +223,78 @@ namespace pyrelite
 
     bool Game::addEnemy(int tileX, int tileY, EnemyType type)
     {
+        // The public/test seam places an origin-less enemy: it belongs to no zone and is
+        // never persisted on death.
+        return placeEnemy(tileX, tileY, type, EnemyOrigin{0, 0, 0, 0, false});
+    }
+
+    bool Game::placeEnemy(int tileX, int tileY, EnemyType type, const EnemyOrigin &origin)
+    {
         if (!m_terrain->inBounds(tileX, tileY) || m_terrain->at(tileX, tileY) != Tile::Empty)
             return false;
 
         m_enemies.push_back(makeEnemy(type, tileX, tileY));
+        m_enemyOrigins.push_back(origin);
         return true;
+    }
+
+    // Spawn the rosters of zones the active window has entered and evict those of zones it
+    // has left, so the streamed world owns its enemies a zone at a time. Recomputed only
+    // when the player crosses a chunk (the window cannot otherwise change). A no-op for
+    // bounded games, which never set m_streamed.
+    void Game::refreshActiveZones()
+    {
+        if (!m_streamed)
+            return;
+
+        const int playerChunkX = World::chunkCoord(playerX());
+        const int playerChunkY = World::chunkCoord(playerY());
+        const std::pair<int, int> here{playerChunkX, playerChunkY};
+        if (m_lastPlayerChunk == here)
+            return;
+        m_lastPlayerChunk = here;
+
+        std::set<std::pair<int, int>> nowActive;
+        for (int cy = playerChunkY - kZoneScanChunks; cy <= playerChunkY + kZoneScanChunks; ++cy)
+            for (int cx = playerChunkX - kZoneScanChunks; cx <= playerChunkX + kZoneScanChunks; ++cx)
+                if (m_terrain->simulationActiveAt(cx * kChunkSize, cy * kChunkSize))
+                    nowActive.emplace(Zone::ofChunk(cx), Zone::ofChunk(cy));
+
+        for (const auto &zone : m_activeZones)
+            if (nowActive.find(zone) == nowActive.end())
+                despawnZone(zone.first, zone.second);
+        for (const auto &zone : nowActive)
+            if (m_activeZones.find(zone) == m_activeZones.end())
+                spawnZoneEnemies(zone.first, zone.second);
+        m_activeZones = std::move(nowActive);
+    }
+
+    void Game::spawnZoneEnemies(int zoneX, int zoneY)
+    {
+        for (const EnemySpawn &spawn : zoneEnemyRoster(m_worldSeed, zoneX, zoneY))
+        {
+            // A killed enemy never returns: skip its pristine spawn cell on reload.
+            if (m_deadEnemies.find({spawn.x, spawn.y}) != m_deadEnemies.end())
+                continue;
+            placeEnemy(spawn.x, spawn.y, spawn.type,
+                       EnemyOrigin{zoneX, zoneY, spawn.x, spawn.y, true});
+        }
+    }
+
+    // Drop a deactivated zone's still-living enemies. They are not deaths — they simply
+    // leave with their zone and respawn (minus any killed) when it next activates.
+    void Game::despawnZone(int zoneX, int zoneY)
+    {
+        for (std::size_t i = m_enemies.size(); i-- > 0;)
+        {
+            const EnemyOrigin &origin = m_enemyOrigins[i];
+            if (origin.persistent && origin.zoneX == zoneX && origin.zoneY == zoneY)
+            {
+                const auto offset = static_cast<std::ptrdiff_t>(i);
+                m_enemies.erase(m_enemies.begin() + offset);
+                m_enemyOrigins.erase(m_enemyOrigins.begin() + offset);
+            }
+        }
     }
 
     void Game::setVisibleArea(int minX, int minY, int maxX, int maxY)
@@ -290,6 +361,7 @@ namespace pyrelite
 
         m_player.snapTo(tx, ty);
         m_terrain->stream(playerX(), playerY());
+        refreshActiveZones();
         collectPowerUpAtPlayer();
         collectPerkCrystalAtPlayer();
         return true;
@@ -380,13 +452,21 @@ namespace pyrelite
             }
         }
 
-        const std::size_t before = m_enemies.size();
-        std::erase_if(m_enemies,
-            [this](const std::unique_ptr<IEnemy> &enemy)
-            {
-                return hasExplosionAt(enemy->tileX(), enemy->tileY());
-            });
-        const std::size_t killed = before - m_enemies.size();
+        // Remove enemies caught in a flame, keeping m_enemyOrigins aligned. A killed
+        // streamed enemy records its pristine spawn cell so its zone never respawns it.
+        std::size_t killed = 0;
+        for (std::size_t i = m_enemies.size(); i-- > 0;)
+        {
+            if (!hasExplosionAt(m_enemies[i]->tileX(), m_enemies[i]->tileY()))
+                continue;
+            const EnemyOrigin &origin = m_enemyOrigins[i];
+            if (origin.persistent)
+                m_deadEnemies.emplace(origin.spawnX, origin.spawnY);
+            const auto offset = static_cast<std::ptrdiff_t>(i);
+            m_enemies.erase(m_enemies.begin() + offset);
+            m_enemyOrigins.erase(m_enemyOrigins.begin() + offset);
+            ++killed;
+        }
         if (killed > 0)
         {
             awardXp(static_cast<int>(killed) * kXpPerKill);
@@ -638,6 +718,7 @@ namespace pyrelite
         // Keep the streamed world resident around the player (a no-op for a bounded
         // arena). Done before movement so this tick's reads hit loaded chunks.
         m_terrain->stream(playerX(), playerY());
+        refreshActiveZones();
 
         bool changed = drainBomb();
         if (integrateMovement(deltaMs))

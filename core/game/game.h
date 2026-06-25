@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <set>
 #include <utility>
 #include <vector>
 
@@ -135,6 +136,11 @@ namespace pyrelite
         bool hasPowerUpAt(int x, int y) const;
         bool hasEnemyAt(int x, int y) const;
 
+        // How many distinct streamed-world enemies the player has killed. Their spawn
+        // cells are remembered for the run so a reloaded zone never resurrects them
+        // (anti-farm); exposed for introspection/tests, like World::deltaCount.
+        std::size_t killedEnemyCount() const { return m_deadEnemies.size(); }
+
         // Whether a moving entity may occupy tile (x, y): in-bounds, empty, and not
         // blocked by a live bomb. From IGame, so enemy archetypes can navigate.
         bool walkable(int x, int y) const override;
@@ -180,11 +186,29 @@ namespace pyrelite
         bool update(int deltaMs);
 
     private:
+        // Where a streamed enemy came from: the generation zone that owns it and the
+        // pristine floor cell it spawned on. Bounded/test enemies (addEnemy) carry no
+        // origin (persistent == false): they are never owned by a zone nor persisted.
+        struct EnemyOrigin
+        {
+            int zoneX;
+            int zoneY;
+            int spawnX;
+            int spawnY;
+            bool persistent;
+        };
+
         bool drainBomb();
         bool integrateMovement(int deltaMs);
         bool resolveDeaths();
         void spawnEnemies(int count);
         void spawnEnemiesIn(int minX, int minY, int maxX, int maxY, int count);
+        bool placeEnemy(int tileX, int tileY, EnemyType type, const EnemyOrigin &origin);
+        // Spawn/evict whole zone rosters as the player's active window moves over the
+        // streamed world; a no-op for bounded games.
+        void refreshActiveZones();
+        void spawnZoneEnemies(int zoneX, int zoneY);
+        void despawnZone(int zoneX, int zoneY);
         int movementUnits(int deltaMs) const;
         void explode(const Bomb &bomb);
         void addExplosion(int x, int y);
@@ -205,6 +229,8 @@ namespace pyrelite
         std::vector<Explosion> m_explosions;
         std::vector<PowerUp> m_powerUps;
         std::vector<std::unique_ptr<IEnemy>> m_enemies;
+        // Spawn origin per enemy, aligned 1:1 with m_enemies (push and erase in lockstep).
+        std::vector<EnemyOrigin> m_enemyOrigins;
         int m_bombLimit = 1;
         int m_bombRange = 2;
         int m_playerSpeed = 1;
@@ -219,5 +245,13 @@ namespace pyrelite
         Objective m_objective = Objective::ClearEnemies;
         std::optional<Direction> m_heldDir;
         bool m_pendingBomb = false;
+
+        // Streamed-world enemy lifecycle. Only the streamed game owns zone rosters; the
+        // bounded constructors leave m_streamed false so all of this stays inert.
+        bool m_streamed = false;
+        std::uint64_t m_worldSeed = 0;
+        std::set<std::pair<int, int>> m_activeZones;
+        std::set<std::pair<int, int>> m_deadEnemies; // global spawn tiles, never resurrected
+        std::optional<std::pair<int, int>> m_lastPlayerChunk;
     };
 } // namespace pyrelite

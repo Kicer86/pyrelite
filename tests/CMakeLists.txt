@@ -14,6 +14,7 @@ set(tests
     enemies/enemy_test
     enemies/enemy_ai_test
     game/game_test
+    game/zone_spawns_test
     game/bomb_test
     game/explosion_test
     game/power_up_test
