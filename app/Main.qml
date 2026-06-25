@@ -151,31 +151,23 @@ Window {
 
                 model: cols * rows
 
-                Rectangle {
+                TerrainTile {
                     required property int index
 
                     readonly property int gx: terrain.originX + (index % terrain.cols)
                     readonly property int gy: terrain.originY + Math.floor(index / terrain.cols)
                     // Re-read on scroll (gx/gy change) and on board changes (revision),
                     // so streamed-in tiles and bombed-open bricks both show.
-                    readonly property int tile: {
+                    tile: {
                         board.revision
                         return board.tileAt(gx, gy)
                     }
-                    readonly property var pal: root.tierColors[
+                    pal: root.tierColors[
                         Math.min(board.tierAt(gx, gy), root.tierColors.length - 1)]
 
-                    width: root.cell
-                    height: root.cell
+                    cell: root.cell
                     x: gx * root.cell
                     y: gy * root.cell
-                    color: tile === BoardModel.Wall ? pal.rock
-                         : tile === BoardModel.Brick ? pal.brick
-                         : tile === BoardModel.Void ? pal.abyss
-                         : pal.floor
-                    // No grid line over the void, so it reads as continuous open space.
-                    border.color: tile === BoardModel.Void ? pal.abyss : "#2a2a2a"
-                    border.width: 1
                 }
             }
 
