@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 296" width="240" height="296" role="img" aria-label="Pyrelite">
+  <defs>
+    <radialGradient id="bomb" cx="38%" cy="30%" r="78%">
+      <stop offset="0" stop-color="#3c3c46"/>
+      <stop offset=".55" stop-color="#1b1b22"/>
+      <stop offset="1" stop-color="#070709"/>
+    </radialGradient>
+    <linearGradient id="metal" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#a6acb3"/>
+      <stop offset="1" stop-color="#474b51"/>
+    </linearGradient>
+    <radialGradient id="flame" cx="50%" cy="72%" r="68%">
+      <stop offset="0" stop-color="#fff4b8"/>
+      <stop offset=".42" stop-color="#ffd23d"/>
+      <stop offset=".78" stop-color="#ff7a1a"/>
+      <stop offset="1" stop-color="#ff3b1d"/>
+    </radialGradient>
+    <linearGradient id="fire" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffe27a"/>
+      <stop offset=".5" stop-color="#ff8a1e"/>
+      <stop offset="1" stop-color="#ff3b1d"/>
+    </linearGradient>
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="6" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <style>
+      .flame  { transform-box: fill-box; transform-origin: 50% 100%;
+                animation: flick .42s ease-in-out infinite alternate; }
+      .glow   { animation: pulse 1.6s ease-in-out infinite; }
+      .spark  { animation: rise 1.5s ease-in-out infinite; }
+      .spark.b{ animation-duration: 1.9s; animation-delay: .5s; }
+      @keyframes flick { from { transform: scale(1,1)    translateY(0); }
+                         to   { transform: scale(.86,1.12) translateY(-2px); } }
+      @keyframes pulse { 0%,100% { opacity:.25 } 50% { opacity:.5 } }
+      @keyframes rise  { 0% { opacity:0; transform: translateY(0) }
+                         30% { opacity:1 }
+                         100% { opacity:0; transform: translateY(-16px) } }
+    </style>
+  </defs>
+
+  <!-- ground shadow -->
+  <ellipse cx="120" cy="232" rx="60" ry="12" fill="#000" opacity=".45"/>
+
+  <!-- bomb body -->
+  <circle cx="120" cy="166" r="62" fill="url(#bomb)"/>
+  <ellipse cx="98" cy="142" rx="22" ry="13" fill="#fff" opacity=".15" transform="rotate(-28 98 142)"/>
+
+  <!-- cap -->
+  <rect x="106" y="96" width="28" height="22" rx="4" fill="url(#metal)"/>
+  <rect x="110" y="89" width="20" height="11" rx="3" fill="url(#metal)"/>
+  <rect x="110" y="92" width="20" height="3" fill="#000" opacity=".25"/>
+
+  <!-- fuse -->
+  <path d="M120 92 C 112 70, 140 64, 150 48" fill="none"
+        stroke="#c79a4e" stroke-width="7" stroke-linecap="round"/>
+  <path d="M120 92 C 112 70, 140 64, 150 48" fill="none"
+        stroke="#8a6322" stroke-width="7" stroke-linecap="round"
+        stroke-dasharray="2 7"/>
+
+  <!-- flame -->
+  <g transform="translate(150 48)">
+    <circle class="glow" cx="2" cy="-12" r="22" fill="url(#flame)" filter="url(#glow)"/>
+    <g class="flame">
+      <path d="M2 8 C 18 -6, 14 -26, 2 -36 C -10 -26, -14 -6, 2 8 Z" fill="url(#flame)"/>
+      <path d="M2 4 C 12 -6, 9 -20, 2 -26 C -5 -20, -8 -6, 2 4 Z" fill="#ffd23d"/>
+      <path d="M2 0 C 8 -6, 6 -14, 2 -18 C -2 -14, -4 -6, 2 0 Z" fill="#fff4c2"/>
+    </g>
+    <circle class="spark"  cx="16" cy="-18" r="2"   fill="#ffd23d"/>
+    <circle class="spark b" cx="-12" cy="-14" r="1.6" fill="#ff8a1e"/>
+  </g>
+
+  <!-- wordmark -->
+  <text x="120" y="282" text-anchor="middle"
+        font-family="'Segoe UI', 'Trebuchet MS', system-ui, sans-serif"
+        font-size="38" font-weight="800" letter-spacing="1.5"
+        fill="url(#fire)">PYRELITE</text>
+</svg>
