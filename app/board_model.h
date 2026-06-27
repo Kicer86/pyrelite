@@ -33,6 +33,14 @@ class BoardModel : public QObject
     Q_PROPERTY(int xp READ xp NOTIFY changed)
     Q_PROPERTY(int xpToNextLevel READ xpToNextLevel NOTIFY changed)
     Q_PROPERTY(int perkCrystalCount READ perkCrystalCount NOTIFY changed)
+    // Upgrade state for the HUD: the numeric power-up economy and the active perk
+    // abilities. All refresh on the same changed() signal as the rest of the model.
+    Q_PROPERTY(int bombLimit READ bombLimit NOTIFY changed)
+    Q_PROPERTY(int bombRange READ bombRange NOTIFY changed)
+    Q_PROPERTY(int playerSpeed READ playerSpeed NOTIFY changed)
+    Q_PROPERTY(bool pierceBlast READ pierceBlast NOTIFY changed)
+    Q_PROPERTY(int shieldCharges READ shieldCharges NOTIFY changed)
+    Q_PROPERTY(bool remoteDetonator READ remoteDetonator NOTIFY changed)
     Q_PROPERTY(int previewChunkCount READ previewChunkCount NOTIFY changed)
     Q_PROPERTY(int chunkTiles READ chunkTiles CONSTANT)
     Q_PROPERTY(int revision READ revision NOTIFY changed)
@@ -61,6 +69,13 @@ public:
     int xp() const;
     int xpToNextLevel() const;
     int perkCrystalCount() const;
+    // Upgrade state, read straight from the core for the HUD.
+    int bombLimit() const { return m_game.bombLimit(); }
+    int bombRange() const { return m_game.bombRange(); }
+    int playerSpeed() const { return m_game.playerSpeed(); }
+    bool pierceBlast() const { return m_game.pierceBlast(); }
+    int shieldCharges() const { return m_game.shieldCharges(); }
+    bool remoteDetonator() const { return m_game.remoteDetonator(); }
     int previewChunkCount() const { return static_cast<int>(m_previewChunks.size()); }
     // Tiles per world chunk, so the preview's chunk grid stays aligned with core
     // generation without the view hard-coding the size.
@@ -120,6 +135,8 @@ public:
     // whose release never arrives cannot leave the player walking forever.
     Q_INVOKABLE void clearDirections();
     Q_INVOKABLE void placeBomb();
+    // Trigger the Remote Detonator perk: blow every live bomb. A no-op without the perk.
+    Q_INVOKABLE void detonateBombs();
     Q_INVOKABLE void setVisibleArea(int minX, int minY, int maxX, int maxY);
     Q_INVOKABLE void update(double deltaMs);
     // Start a fresh run (same seed) after a loss.

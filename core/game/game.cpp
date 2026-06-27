@@ -23,6 +23,9 @@ namespace pyrelite
     {
         constexpr int kBombFuseMs = 2000;
         constexpr int kExplosionMs = 400;
+        // Mercy window after a Shield soaks a hit. Outlasts a flame (kExplosionMs) so
+        // the same blast that triggered the save cannot immediately spend a second charge.
+        constexpr int kShieldInvulnMs = 500;
 
         // Movement is expressed in sub-units per millisecond, so a frame moves
         // movementUnits = speed * deltaMs (integer, deterministic). At kSubcell =
@@ -72,9 +75,9 @@ namespace pyrelite
         // that many, so all appear — adding a perk here (and to PerkType) turns the drop
         // into a real random subset with no other change.
         constexpr PerkType kPerkCatalog[] = {
-            PerkType::ExtraBomb,
-            PerkType::BiggerBlast,
-            PerkType::SwiftFeet,
+            PerkType::PierceBlast,
+            PerkType::Shield,
+            PerkType::RemoteDetonator,
         };
 
         // Every kind a brick can drop, in one place. randomPowerUpType draws
@@ -399,6 +402,30 @@ namespace pyrelite
         return placeBomb();
     }
 
+    void Game::queueDetonate()
+    {
+        m_pendingDetonate = true;
+    }
+
+    bool Game::drainDetonate()
+    {
+        if (!m_pendingDetonate)
+            return false;
+        m_pendingDetonate = false;
+        if (!m_remoteDetonator)
+            return false; // inert without the perk; bombs tick down on their own
+
+        // Arm every live bomb to blow this tick; the detonation loop below fires them
+        // (and any chains) in the usual order.
+        bool any = false;
+        for (Bomb &bomb : m_bombs)
+        {
+            bomb.fuseMs = 0;
+            any = true;
+        }
+        return any;
+    }
+
     int Game::movementUnits(int deltaMs) const
     {
         const int unitsPerMs = kBaseSpeedUnitsPerMs
@@ -497,8 +524,17 @@ namespace pyrelite
 
         const int px = playerX();
         const int py = playerY();
-        if (hasExplosionAt(px, py) || hasEnemyAt(px, py))
+        if (m_invulnMs <= 0 && (hasExplosionAt(px, py) || hasEnemyAt(px, py)))
         {
+            // Shield (Second Wind) soaks the hit and opens a brief mercy window, so the
+            // same hazard cannot immediately spend another charge; only without a charge
+            // does the run end.
+            if (m_shieldCharges > 0)
+            {
+                --m_shieldCharges;
+                m_invulnMs = kShieldInvulnMs;
+                return true;
+            }
             m_state = GameState::Lost;
             return true;
         }
@@ -517,8 +553,12 @@ namespace pyrelite
         m_explosions.push_back(Explosion{x, y, kExplosionMs});
     }
 
-    void Game::dropPowerUp(int x, int y)
+    void Game::maybeDropPowerUp(int x, int y)
     {
+        // Roll first (one draw, always), so the drop chance is honoured before a type is
+        // even chosen. Below the threshold the brick simply yields nothing.
+        if (static_cast<int>(m_powerUpRng.below(100)) >= m_powerUpDropPercent)
+            return;
         m_powerUps.push_back(PowerUp{x, y, randomPowerUpType(m_powerUpRng)});
     }
 
@@ -581,8 +621,11 @@ namespace pyrelite
                 if (m_terrain->at(x, y) == Tile::Brick)
                 {
                     m_terrain->set(x, y, Tile::Empty);
-                    dropPowerUp(x, y);
-                    break;
+                    maybeDropPowerUp(x, y);
+                    // Pierce Blast tears on through to full range; without it the arm
+                    // spends itself on the first brick.
+                    if (!m_pierceBlast)
+                        break;
                 }
             }
         }
@@ -599,6 +642,16 @@ namespace pyrelite
     void Game::setBombRange(int range)
     {
         m_bombRange = std::max(1, range);
+    }
+
+    void Game::setPowerUpDropPercent(int percent)
+    {
+        m_powerUpDropPercent = std::min(100, std::max(0, percent));
+    }
+
+    void Game::setShieldCharges(int charges)
+    {
+        m_shieldCharges = std::max(0, charges);
     }
 
     int Game::xpToNextLevel() const
@@ -717,14 +770,14 @@ namespace pyrelite
     {
         switch (perk)
         {
-        case PerkType::ExtraBomb:
-            setBombLimit(m_bombLimit + 1);
+        case PerkType::PierceBlast:
+            setPierceBlast(true);
             break;
-        case PerkType::BiggerBlast:
-            setBombRange(m_bombRange + 1);
+        case PerkType::Shield:
+            setShieldCharges(m_shieldCharges + 1);
             break;
-        case PerkType::SwiftFeet:
-            ++m_playerSpeed;
+        case PerkType::RemoteDetonator:
+            setRemoteDetonator(true);
             break;
         }
     }
@@ -741,7 +794,13 @@ namespace pyrelite
         m_terrain->stream(playerX(), playerY());
         refreshActiveZones();
 
+        // Burn down any Shield mercy window before this tick's hazards are judged.
+        if (m_invulnMs > 0)
+            m_invulnMs = std::max(0, m_invulnMs - deltaMs);
+
         bool changed = drainBomb();
+        if (drainDetonate())
+            changed = true;
         if (integrateMovement(deltaMs))
             changed = true;
 
@@ -764,9 +823,10 @@ namespace pyrelite
             changed = true;
         }
 
-        // Age fuses.
-        for (Bomb &bomb : m_bombs)
-            bomb.fuseMs -= deltaMs;
+        // Age fuses — unless Remote Detonator holds them frozen until the player fires.
+        if (!m_remoteDetonator)
+            for (Bomb &bomb : m_bombs)
+                bomb.fuseMs -= deltaMs;
 
         // Detonate every elapsed bomb, cascading through chains.
         while (true)

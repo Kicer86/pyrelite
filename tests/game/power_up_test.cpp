@@ -11,7 +11,7 @@ using namespace pyrelite;
 
 namespace
 {
-    Game makeRoomWithBrick(std::uint64_t seed = 1)
+    Grid roomWithBrickGrid()
     {
         Grid g(7, 7);
         for (int i = 0; i < 7; ++i)
@@ -22,7 +22,14 @@ namespace
             g.set(6, i, Tile::Wall);
         }
         g.set(3, 1, Tile::Brick);
-        return Game(g, seed);
+        return g;
+    }
+
+    Game makeRoomWithBrick(std::uint64_t seed = 1)
+    {
+        Game game(roomWithBrickGrid(), seed);
+        game.setPowerUpDropPercent(100); // deterministic drop for the drop/effect tests
+        return game;
     }
 
     void destroyBrick(Game &game)
@@ -40,13 +47,48 @@ namespace
 
 TEST(PowerUpTest, DestroyedBrickDropsPowerUp)
 {
-    Game game = makeRoomWithBrick();
+    Game game = makeRoomWithBrick(); // forced to 100% by the helper
     destroyBrick(game);
 
     ASSERT_EQ(game.powerUps().size(), 1u);
     EXPECT_EQ(game.powerUps()[0].x, 3);
     EXPECT_EQ(game.powerUps()[0].y, 1);
     EXPECT_TRUE(game.hasPowerUpAt(3, 1));
+}
+
+TEST(PowerUpTest, BrickDropsAreGatedByChance)
+{
+    {
+        Game game = makeRoomWithBrick();
+        game.setPowerUpDropPercent(0); // never drops
+        destroyBrick(game);
+        EXPECT_TRUE(game.powerUps().empty());
+    }
+    {
+        Game game = makeRoomWithBrick();
+        game.setPowerUpDropPercent(100); // always drops
+        destroyBrick(game);
+        EXPECT_EQ(game.powerUps().size(), 1u);
+    }
+}
+
+TEST(PowerUpTest, DefaultDropRateIsPartial)
+{
+    // At the shipped default rate a brick neither always nor never drops: counted over
+    // a span of seeds, some destructions yield a power-up and some do not.
+    int drops = 0;
+    int trials = 0;
+    for (std::uint64_t seed = 1; seed <= 60; ++seed)
+    {
+        Game game(roomWithBrickGrid(), seed); // default drop rate, no override
+        EXPECT_EQ(game.powerUpDropPercent(), 30);
+        destroyBrick(game);
+        ++trials;
+        if (!game.powerUps().empty())
+            ++drops;
+    }
+    EXPECT_GT(drops, 0);
+    EXPECT_LT(drops, trials);
 }
 
 TEST(PowerUpTest, CollectedPowerUpIsRemovedAndAppliesEffect)
