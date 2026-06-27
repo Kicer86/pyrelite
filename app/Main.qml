@@ -197,6 +197,7 @@ Window {
             case Qt.Key_Left:  case Qt.Key_A: board.setDirection(BoardModel.Left);  event.accepted = true; break
             case Qt.Key_Right: case Qt.Key_D: board.setDirection(BoardModel.Right); event.accepted = true; break
             case Qt.Key_Space:                board.placeBomb();                    event.accepted = true; break
+            case Qt.Key_F:                    board.detonateBombs();                event.accepted = true; break
             case Qt.Key_R:
                 board.restart()
                 root.recenter()

@@ -77,7 +77,7 @@ namespace pyrelite
         constexpr PerkType kPerkCatalog[] = {
             PerkType::PierceBlast,
             PerkType::Shield,
-            PerkType::SwiftFeet,
+            PerkType::RemoteDetonator,
         };
 
         // Every kind a brick can drop, in one place. randomPowerUpType draws
@@ -400,6 +400,30 @@ namespace pyrelite
             return false;
         m_pendingBomb = false;
         return placeBomb();
+    }
+
+    void Game::queueDetonate()
+    {
+        m_pendingDetonate = true;
+    }
+
+    bool Game::drainDetonate()
+    {
+        if (!m_pendingDetonate)
+            return false;
+        m_pendingDetonate = false;
+        if (!m_remoteDetonator)
+            return false; // inert without the perk; bombs tick down on their own
+
+        // Arm every live bomb to blow this tick; the detonation loop below fires them
+        // (and any chains) in the usual order.
+        bool any = false;
+        for (Bomb &bomb : m_bombs)
+        {
+            bomb.fuseMs = 0;
+            any = true;
+        }
+        return any;
     }
 
     int Game::movementUnits(int deltaMs) const
@@ -752,8 +776,8 @@ namespace pyrelite
         case PerkType::Shield:
             setShieldCharges(m_shieldCharges + 1);
             break;
-        case PerkType::SwiftFeet:
-            ++m_playerSpeed;
+        case PerkType::RemoteDetonator:
+            setRemoteDetonator(true);
             break;
         }
     }
@@ -775,6 +799,8 @@ namespace pyrelite
             m_invulnMs = std::max(0, m_invulnMs - deltaMs);
 
         bool changed = drainBomb();
+        if (drainDetonate())
+            changed = true;
         if (integrateMovement(deltaMs))
             changed = true;
 
@@ -797,9 +823,10 @@ namespace pyrelite
             changed = true;
         }
 
-        // Age fuses.
-        for (Bomb &bomb : m_bombs)
-            bomb.fuseMs -= deltaMs;
+        // Age fuses — unless Remote Detonator holds them frozen until the player fires.
+        if (!m_remoteDetonator)
+            for (Bomb &bomb : m_bombs)
+                bomb.fuseMs -= deltaMs;
 
         // Detonate every elapsed bomb, cascading through chains.
         while (true)

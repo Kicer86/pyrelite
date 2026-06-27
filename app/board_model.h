@@ -120,6 +120,8 @@ public:
     // whose release never arrives cannot leave the player walking forever.
     Q_INVOKABLE void clearDirections();
     Q_INVOKABLE void placeBomb();
+    // Trigger the Remote Detonator perk: blow every live bomb. A no-op without the perk.
+    Q_INVOKABLE void detonateBombs();
     Q_INVOKABLE void setVisibleArea(int minX, int minY, int maxX, int maxY);
     Q_INVOKABLE void update(double deltaMs);
     // Start a fresh run (same seed) after a loss.

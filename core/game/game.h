@@ -46,7 +46,7 @@ namespace pyrelite
     // range, speed) found on bricks and applied on contact; perks are the reward for
     // killing enemies, arrive as a choose-one cluster (see PerkCrystal), and change how
     // the player fights rather than handing out bigger numbers.
-    enum class PerkType { PierceBlast, Shield, SwiftFeet };
+    enum class PerkType { PierceBlast, Shield, RemoteDetonator };
 
     // One crystal of the cluster dropped on level-up. The player walks onto one to
     // claim its perk; the rest of the cluster then vanishes — a choose-1-of-N made by
@@ -150,6 +150,12 @@ namespace pyrelite
         void setShieldCharges(int charges);
         bool invulnerable() const { return m_invulnMs > 0; }
 
+        // Remote Detonator: while held, placed bombs freeze their fuses and wait; the
+        // player triggers the blast on demand (queueDetonate). Without the perk the
+        // command is inert and bombs tick down on their own as usual.
+        bool remoteDetonator() const { return m_remoteDetonator; }
+        void setRemoteDetonator(bool on) { m_remoteDetonator = on; }
+
         bool hasBombAt(int x, int y) const;
         bool hasExplosionAt(int x, int y) const;
         bool hasPowerUpAt(int x, int y) const;
@@ -198,6 +204,10 @@ namespace pyrelite
         // so it is ordered deterministically with the rest of the simulation.
         void queueBomb();
 
+        // Queue a one-shot Remote Detonator trigger, drained at the next update() step:
+        // every live bomb is set to blow this tick. Inert without the remoteDetonator perk.
+        void queueDetonate();
+
         // Advance the simulation by deltaMs: drain the queued bomb, move the player,
         // move the enemies, age flames, detonate elapsed bombs (cross blast up to
         // range, stopped by walls, one brick per arm, chain-detonating caught bombs),
@@ -219,6 +229,7 @@ namespace pyrelite
         };
 
         bool drainBomb();
+        bool drainDetonate();
         bool integrateMovement(int deltaMs);
         // The direction of the step currently in progress. Precondition: the player is
         // off-centre (a step is underway); used to detect an about-face request.
@@ -272,6 +283,8 @@ namespace pyrelite
         bool m_pierceBlast = false;    // perk: blast tears through bricks to full range
         int m_shieldCharges = 0;       // perk: lethal hits the Shield can still soak
         int m_invulnMs = 0;            // remaining mercy invulnerability after a save
+        bool m_remoteDetonator = false; // perk: bombs wait for a manual trigger
+        bool m_pendingDetonate = false; // a queued remote trigger, drained in update()
 
         // Streamed-world enemy lifecycle. Only the streamed game owns zone rosters; the
         // bounded constructors leave m_streamed false so all of this stays inert.

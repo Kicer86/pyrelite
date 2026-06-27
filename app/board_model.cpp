@@ -102,10 +102,10 @@ namespace
             return {QStringLiteral("Pierce Blast"), QStringLiteral("#ff6a3d")};
         case pyrelite::PerkType::Shield:
             return {QStringLiteral("Shield"), QStringLiteral("#4fc3ff")};
-        case pyrelite::PerkType::SwiftFeet:
+        case pyrelite::PerkType::RemoteDetonator:
             break;
         }
-        return {QStringLiteral("Swift Feet"), QStringLiteral("#7ee0a0")};
+        return {QStringLiteral("Remote Detonator"), QStringLiteral("#b388ff")};
     }
 
     pyrelite::Direction toCore(BoardModel::Direction dir)
@@ -396,6 +396,11 @@ void BoardModel::clearDirections()
 void BoardModel::placeBomb()
 {
     m_game.queueBomb();
+}
+
+void BoardModel::detonateBombs()
+{
+    m_game.queueDetonate();
 }
 
 void BoardModel::setVisibleArea(int minX, int minY, int maxX, int maxY)

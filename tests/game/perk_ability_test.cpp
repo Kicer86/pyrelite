@@ -157,3 +157,55 @@ TEST(PerkAbilityTest, AHitWithoutAChargeIsLethal)
     game.update(2000);          // second blast: no charge left
     EXPECT_EQ(game.state(), GameState::Lost);
 }
+
+TEST(PerkAbilityTest, RemoteDetonatorHoldsTheFuse)
+{
+    Game game = makeOpenRoom();
+    game.setRemoteDetonator(true);
+
+    ASSERT_TRUE(game.placeBomb());
+    game.update(5000); // far past the normal fuse: the bomb just waits
+
+    EXPECT_EQ(game.bombs().size(), 1u);
+    EXPECT_FALSE(game.hasExplosionAt(1, 1));
+}
+
+TEST(PerkAbilityTest, RemoteDetonatorFiresEveryBombOnCommand)
+{
+    Game game = makeOpenRoom();
+    game.setRemoteDetonator(true);
+    game.setBombRange(1);
+
+    ASSERT_TRUE(game.placeBomb());               // bomb at the spawn (1,1)
+    ASSERT_TRUE(game.tryMove(Direction::Right));  // (2,1)
+    ASSERT_TRUE(game.tryMove(Direction::Right));  // (3,1): clear of a range-1 blast
+    game.update(3000);                            // the frozen fuse keeps the bomb live
+    ASSERT_EQ(game.bombs().size(), 1u);
+
+    game.queueDetonate();
+    game.update(16); // triggered: it blows this tick
+
+    EXPECT_TRUE(game.bombs().empty());
+    EXPECT_TRUE(game.hasExplosionAt(1, 1));
+    EXPECT_TRUE(game.hasExplosionAt(2, 1));
+    EXPECT_EQ(game.state(), GameState::Playing); // fired on demand, player clear
+}
+
+TEST(PerkAbilityTest, DetonateCommandIsInertWithoutThePerk)
+{
+    Game game = makeOpenRoom();
+    game.setBombRange(1);
+
+    ASSERT_TRUE(game.placeBomb());
+    ASSERT_TRUE(game.tryMove(Direction::Right));
+    ASSERT_TRUE(game.tryMove(Direction::Right));
+
+    game.queueDetonate();
+    game.update(16); // no perk: the command does nothing, the bomb only ticks
+    EXPECT_EQ(game.bombs().size(), 1u);
+    EXPECT_FALSE(game.hasExplosionAt(1, 1));
+
+    game.update(2000); // and detonates on its own fuse as normal
+    EXPECT_TRUE(game.bombs().empty());
+    EXPECT_TRUE(game.hasExplosionAt(1, 1));
+}
