@@ -1,0 +1,6 @@
+# Short floor tap.
+duration 0.07
+volume 0.20
+envelope 0.002 0.045
+tone 0.000 0.055 triangle 170 95 0.70
+noise 0.000 0.030 0.16

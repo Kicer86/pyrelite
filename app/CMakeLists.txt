@@ -1,5 +1,5 @@
 
-find_package(Qt6 REQUIRED COMPONENTS Quick)
+find_package(Qt6 REQUIRED COMPONENTS Quick Multimedia)
 
 qt_standard_project_setup(REQUIRES 6.5)
 
@@ -20,6 +20,8 @@ qt_add_executable(pyrelite
     main.cpp
     board_model.h
     board_model.cpp
+    sound_player.h
+    sound_player.cpp
 )
 
 add_dependencies(pyrelite pyrelite_version)
@@ -29,14 +31,24 @@ qt_add_qml_module(pyrelite
     URI PyreliteApp
     VERSION 1.0
     QML_FILES
-        Main.qml
-        PlayerSprite.qml
-        EnemySprite.qml
+        AudioController.qml
         BombSprite.qml
+        EnemySprite.qml
         FlameSprite.qml
-        TerrainTile.qml
-        PowerUpSprite.qml
+        Main.qml
         PerkCrystalSprite.qml
+        PlayerSprite.qml
+        PowerUpSprite.qml
+        TerrainTile.qml
+
+    RESOURCES
+        sounds/bomb_place.sfx
+        sounds/enemy_down.sfx
+        sounds/explosion.sfx
+        sounds/game_over.sfx
+        sounds/level_up.sfx
+        sounds/pickup.sfx
+        sounds/step.sfx
 )
 
-target_link_libraries(pyrelite PRIVATE core Qt6::Quick)
+target_link_libraries(pyrelite PRIVATE core Qt6::Quick Qt6::Multimedia)

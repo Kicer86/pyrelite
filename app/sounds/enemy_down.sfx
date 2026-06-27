@@ -1,0 +1,7 @@
+# Descending hit chirp when an enemy dies.
+duration 0.24
+volume 0.48
+envelope 0.003 0.120
+tone 0.000 0.190 square 420 145 0.42
+tone 0.015 0.160 sine 260 90 0.52
+noise 0.000 0.055 0.20

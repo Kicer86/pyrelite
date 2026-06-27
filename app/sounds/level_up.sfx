@@ -1,0 +1,8 @@
+# Three-note reward fanfare.
+duration 0.56
+volume 0.54
+envelope 0.006 0.100
+tone 0.000 0.140 sine 523 659 0.60
+tone 0.115 0.160 sine 659 784 0.58
+tone 0.250 0.240 sine 784 1046 0.62
+tone 0.250 0.240 triangle 392 523 0.22
