@@ -517,8 +517,12 @@ namespace pyrelite
         m_explosions.push_back(Explosion{x, y, kExplosionMs});
     }
 
-    void Game::dropPowerUp(int x, int y)
+    void Game::maybeDropPowerUp(int x, int y)
     {
+        // Roll first (one draw, always), so the drop chance is honoured before a type is
+        // even chosen. Below the threshold the brick simply yields nothing.
+        if (static_cast<int>(m_powerUpRng.below(100)) >= m_powerUpDropPercent)
+            return;
         m_powerUps.push_back(PowerUp{x, y, randomPowerUpType(m_powerUpRng)});
     }
 
@@ -581,7 +585,7 @@ namespace pyrelite
                 if (m_terrain->at(x, y) == Tile::Brick)
                 {
                     m_terrain->set(x, y, Tile::Empty);
-                    dropPowerUp(x, y);
+                    maybeDropPowerUp(x, y);
                     break;
                 }
             }
@@ -599,6 +603,11 @@ namespace pyrelite
     void Game::setBombRange(int range)
     {
         m_bombRange = std::max(1, range);
+    }
+
+    void Game::setPowerUpDropPercent(int percent)
+    {
+        m_powerUpDropPercent = std::min(100, std::max(0, percent));
     }
 
     int Game::xpToNextLevel() const

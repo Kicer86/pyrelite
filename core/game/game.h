@@ -131,6 +131,12 @@ namespace pyrelite
         void setBombRange(int range);
         int playerSpeed() const { return m_playerSpeed; }
 
+        // Chance in [0, 100] that destroying a brick drops a power-up. Tunable balance
+        // (power-ups are a treat, not a guarantee) and a test seam: tests force 100 for
+        // a deterministic drop.
+        int powerUpDropPercent() const { return m_powerUpDropPercent; }
+        void setPowerUpDropPercent(int percent);
+
         bool hasBombAt(int x, int y) const;
         bool hasExplosionAt(int x, int y) const;
         bool hasPowerUpAt(int x, int y) const;
@@ -216,7 +222,7 @@ namespace pyrelite
         int movementUnits(int deltaMs) const;
         void explode(const Bomb &bomb);
         void addExplosion(int x, int y);
-        void dropPowerUp(int x, int y);
+        void maybeDropPowerUp(int x, int y);
         void collectPowerUpAtPlayer();
         void applyPowerUp(PowerUpType type);
         void awardXp(int amount);
@@ -249,6 +255,7 @@ namespace pyrelite
         Objective m_objective = Objective::ClearEnemies;
         std::optional<Direction> m_heldDir;
         bool m_pendingBomb = false;
+        int m_powerUpDropPercent = 30; // default brick power-up drop chance, in percent
 
         // Streamed-world enemy lifecycle. Only the streamed game owns zone rosters; the
         // bounded constructors leave m_streamed false so all of this stays inert.
