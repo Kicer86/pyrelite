@@ -144,13 +144,15 @@ namespace pyrelite
 
         StyleParams tierBase(int tier)
         {
+            // islandPct (last field) is deliberately low: scattered single bricks in open
+            // floor read as clutter, so the world stays calmer with only a light dusting.
             switch (tier)
             {
-            case 0:  return {1, 1, 2, 3, 30, 4, 7, 5};
-            case 1:  return {1, 1, 2, 3, 28, 4, 7, 6};
-            case 2:  return {1, 1, 2, 3, 25, 4, 7, 7};
-            case 3:  return {1, 1, 2, 2, 22, 4, 6, 8};
-            default: return {1, 1, 2, 2, 20, 3, 6, 9};
+            case 0:  return {1, 1, 2, 3, 30, 4, 7, 2};
+            case 1:  return {1, 1, 2, 3, 28, 4, 7, 2};
+            case 2:  return {1, 1, 2, 3, 25, 4, 7, 3};
+            case 3:  return {1, 1, 2, 2, 22, 4, 6, 3};
+            default: return {1, 1, 2, 2, 20, 3, 6, 4};
             }
         }
 
@@ -170,11 +172,11 @@ namespace pyrelite
                 style.maxRooms += 3;
                 break;
             case Biome::Pillars:
-                style.islandPct += 14;
+                style.islandPct += 7;
                 break;
             case Biome::Thicket:
                 style.brickPct += 22;
-                style.islandPct += 5;
+                style.islandPct += 3;
                 break;
             case Biome::Cavern:
                 style.minRooms += 1;
@@ -748,13 +750,13 @@ namespace pyrelite
         {
             switch (biome)
             {
-            case Biome::Thicket: return 55;
-            case Biome::Warren:  return 46;
-            case Biome::Cavern:  return 38;
-            case Biome::Hall:    return 34;
-            case Biome::Pillars: return 36;
+            case Biome::Thicket: return 46;
+            case Biome::Warren:  return 38;
+            case Biome::Cavern:  return 32;
+            case Biome::Hall:    return 28;
+            case Biome::Pillars: return 30;
             }
-            return 42;
+            return 34;
         }
 
         // Packing an arena with brick can seal it off: its connecting artery is bricked
@@ -1114,8 +1116,9 @@ namespace pyrelite
             }
 
             // Small unadorned nodes become forks where several oblique tunnels can
-            // meet without every branch swelling into another large room.
-            const int junctionCount = 4 + static_cast<int>(rng.below(4));
+            // meet without every branch swelling into another large room. Kept few: a
+            // dense web of junctions is what made the labyrinth read as chaotic.
+            const int junctionCount = 2 + static_cast<int>(rng.below(2));
             for (int junction = 0; junction < junctionCount; ++junction)
             {
                 Point point{0, 0};
