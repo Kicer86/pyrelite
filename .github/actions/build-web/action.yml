@@ -18,6 +18,7 @@ runs:
         host: all_os
         target: wasm
         arch: wasm_singlethread
+        modules: qtmultimedia
         cache: true
         # install-qt-action adds --autodesktop, which also installs the matching
         # desktop Qt and exports QT_ROOT_DIR (wasm) and QT_HOST_PATH (desktop).
