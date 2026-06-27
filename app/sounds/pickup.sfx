@@ -1,0 +1,7 @@
+# Bright upward chime for power-ups and perk claims.
+duration 0.22
+volume 0.46
+envelope 0.004 0.075
+tone 0.000 0.105 sine 620 880 0.72
+tone 0.070 0.120 sine 930 1240 0.55
+tone 0.025 0.090 triangle 1240 1480 0.18

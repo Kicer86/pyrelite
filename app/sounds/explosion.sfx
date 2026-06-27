@@ -1,0 +1,7 @@
+# Low blast body plus a decaying burst of noise.
+duration 0.42
+volume 0.62
+envelope 0.001 0.210
+tone 0.000 0.360 sine 74 38 0.78
+tone 0.010 0.170 saw 118 54 0.24
+noise 0.000 0.310 0.58

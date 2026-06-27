@@ -16,6 +16,10 @@ Window {
     color: "#1b1b1b"
 
     BoardModel { id: board }
+    AudioController {
+        board: board
+        active: !root.previewMode
+    }
 
     // Tile size in pixels. Gameplay keeps the default scale; preview mode may change
     // it to sample a wider/narrower world window. Generation stays on a fixed chunk

@@ -1,0 +1,8 @@
+# Falling minor tones for run loss.
+duration 0.82
+volume 0.58
+envelope 0.010 0.180
+tone 0.000 0.260 sine 294 247 0.54
+tone 0.220 0.280 sine 247 196 0.54
+tone 0.470 0.330 sine 196 98 0.58
+noise 0.500 0.260 0.10
