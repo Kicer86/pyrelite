@@ -141,6 +141,26 @@ TEST(GameTest, TurnsOnlyWhenCentred)
     EXPECT_EQ(game.playerY(), 2);
 }
 
+TEST(GameTest, ReversesStepImmediately)
+{
+    Game game = makeRoom();
+    game.setMoveDirection(Direction::Down);
+    EXPECT_TRUE(game.update(16));            // committed downward, now off-centre
+    const int midstep = game.playerSubY();
+    EXPECT_GT(midstep, kSubcell);
+    EXPECT_LT(midstep, 2 * kSubcell);
+
+    game.setMoveDirection(Direction::Up);    // about-face mid-step
+    EXPECT_TRUE(game.update(16));
+    EXPECT_LT(game.playerSubY(), midstep);   // heads back at once, not finishing down
+    EXPECT_EQ(game.playerSubX(), kSubcell);  // still grid-locked on the column
+
+    for (int i = 0; i < 40; ++i)
+        game.update(16);
+    EXPECT_EQ(game.playerY(), 1);            // returned to the tile it left
+    EXPECT_EQ(game.playerSubY(), kSubcell);  // and settled there (wall above stops it)
+}
+
 TEST(GameTest, QueuedBombPlacedOnUpdate)
 {
     Game game = makeRoom();

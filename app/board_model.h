@@ -4,6 +4,7 @@
 #include <map>
 #include <optional>
 #include <utility>
+#include <vector>
 
 #include <QObject>
 #include <QString>
@@ -109,10 +110,15 @@ public:
     Q_INVOKABLE QString perkCrystalColor(int index) const;
     Q_INVOKABLE QString perkCrystalName(int index) const;
 
-    // Held-key movement: a press sets the direction, a release clears it only if it
-    // is still the active one (last press wins). The core moves the player on its tick.
+    // Held-key movement: a press pushes a direction and a release removes it. The
+    // newest still-held key drives the player, so releasing one key while another is
+    // still down resumes that other key instead of stopping — the multi-key handling
+    // a held diagonal needs on web, where the OS does not re-issue the held key.
     Q_INVOKABLE void setDirection(Direction dir);
     Q_INVOKABLE void clearDirection(Direction dir);
+    // Drop every held direction and stop. Called when the window loses focus so a key
+    // whose release never arrives cannot leave the player walking forever.
+    Q_INVOKABLE void clearDirections();
     Q_INVOKABLE void placeBomb();
     Q_INVOKABLE void setVisibleArea(int minX, int minY, int maxX, int maxY);
     Q_INVOKABLE void update(double deltaMs);
@@ -128,7 +134,9 @@ private:
     pyrelite::Game m_game;
     pyrelite::FixedTimestep m_step;
     int m_revision = 0;
-    int m_activeDir = -1;
+    // Directions whose key is currently held, in press order; the back is the active
+    // one. Releasing a key removes it and falls back to the previous still-held key.
+    std::vector<Direction> m_heldDirs;
     std::map<std::pair<int, int>, pyrelite::Chunk> m_previewChunks;
     std::optional<std::pair<int, int>> m_previewCenterChunk;
     // Builds each preview zone once instead of rebuilding it for every chunk it owns.

@@ -165,9 +165,10 @@ namespace pyrelite
         bool tryMove(Direction dir);
 
         // Set (or clear, with nullopt) the held movement direction. The player moves
-        // grid-locked: it keeps travelling along the held direction, can only turn
-        // when centred on a tile, and always finishes the current step even if the
-        // key is released mid-tile. Integrated in update().
+        // grid-locked: it keeps travelling along the held direction and can only turn
+        // 90 degrees when centred on a tile. A step in progress otherwise runs to the
+        // next centre even if the key is released mid-tile — except an about-face, which
+        // reverses the current step at once. Integrated in update().
         void setMoveDirection(std::optional<Direction> dir);
 
         // Drop a bomb on the player's current tile. Returns true if one was placed
@@ -200,6 +201,9 @@ namespace pyrelite
 
         bool drainBomb();
         bool integrateMovement(int deltaMs);
+        // The direction of the step currently in progress. Precondition: the player is
+        // off-centre (a step is underway); used to detect an about-face request.
+        Direction currentStepDirection() const;
         bool resolveDeaths();
         void spawnEnemies(int count);
         void spawnEnemiesIn(int minX, int minY, int maxX, int maxY, int count);
