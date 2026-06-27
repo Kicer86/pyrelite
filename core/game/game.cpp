@@ -406,10 +406,21 @@ namespace pyrelite
         return unitsPerMs * deltaMs;
     }
 
-    // Grid-locked continuous movement: while a step is in progress (the player is
-    // off-centre) finish it toward the target centre, ignoring input — so a key
-    // released mid-tile still completes the step. Only when centred do we sample the
-    // held direction and, if the next tile is walkable, commit to the next step.
+    // Which way the in-progress step is headed, read off the offset from the current
+    // sub-position to the target tile centre. Exactly one axis differs while a step runs.
+    Direction Game::currentStepDirection() const
+    {
+        if (m_player.targetSubX != m_player.subX)
+            return m_player.targetSubX > m_player.subX ? Direction::Right : Direction::Left;
+        return m_player.targetSubY > m_player.subY ? Direction::Down : Direction::Up;
+    }
+
+    // Grid-locked continuous movement. When centred we sample the held direction and,
+    // if the next tile is walkable, commit to the next step. While a step is already in
+    // progress most input waits for the tile centre (a perpendicular turn off-grid would
+    // cut corners) — except an about-face: pressing the reverse of the current heading
+    // re-aims at the tile just left, so the player can cancel a step and turn back at
+    // once instead of having to walk a whole tile forward first.
     bool Game::integrateMovement(int deltaMs)
     {
         if (m_player.centred())
@@ -424,6 +435,16 @@ namespace pyrelite
                 return false; // blocked against a wall/brick/bomb; stay centred
 
             m_player.aimAt(tx, ty);
+        }
+        else if (m_heldDir && *m_heldDir == reverse(currentStepDirection()))
+        {
+            // Reverse mid-step: head back to the tile we are leaving. It is the tile we
+            // just came from, so it is walkable unless a bomb was dropped on it meanwhile.
+            int ox = tileOf(m_player.targetSubX);
+            int oy = tileOf(m_player.targetSubY);
+            stepTile(*m_heldDir, ox, oy);
+            if (walkable(ox, oy))
+                m_player.aimAt(ox, oy);
         }
 
         if (!m_player.advance(movementUnits(deltaMs)))
