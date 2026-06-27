@@ -72,7 +72,7 @@ namespace pyrelite
         // that many, so all appear — adding a perk here (and to PerkType) turns the drop
         // into a real random subset with no other change.
         constexpr PerkType kPerkCatalog[] = {
-            PerkType::ExtraBomb,
+            PerkType::PierceBlast,
             PerkType::BiggerBlast,
             PerkType::SwiftFeet,
         };
@@ -586,7 +586,10 @@ namespace pyrelite
                 {
                     m_terrain->set(x, y, Tile::Empty);
                     maybeDropPowerUp(x, y);
-                    break;
+                    // Pierce Blast tears on through to full range; without it the arm
+                    // spends itself on the first brick.
+                    if (!m_pierceBlast)
+                        break;
                 }
             }
         }
@@ -726,8 +729,8 @@ namespace pyrelite
     {
         switch (perk)
         {
-        case PerkType::ExtraBomb:
-            setBombLimit(m_bombLimit + 1);
+        case PerkType::PierceBlast:
+            setPierceBlast(true);
             break;
         case PerkType::BiggerBlast:
             setBombRange(m_bombRange + 1);

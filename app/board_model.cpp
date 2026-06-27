@@ -98,8 +98,8 @@ namespace
     {
         switch (perk)
         {
-        case pyrelite::PerkType::ExtraBomb:
-            return {QStringLiteral("Extra Bomb"), QStringLiteral("#ffcf40")};
+        case pyrelite::PerkType::PierceBlast:
+            return {QStringLiteral("Pierce Blast"), QStringLiteral("#ff6a3d")};
         case pyrelite::PerkType::BiggerBlast:
             return {QStringLiteral("Bigger Blast"), QStringLiteral("#ff8c42")};
         case pyrelite::PerkType::SwiftFeet:

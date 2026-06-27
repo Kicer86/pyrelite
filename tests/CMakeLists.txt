@@ -20,6 +20,7 @@ set(tests
     game/power_up_test
     game/death_test
     game/progression_test
+    game/perk_ability_test
     game/input_validation_test
     game/fixed_timestep_test
 )

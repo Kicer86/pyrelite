@@ -41,12 +41,12 @@ namespace pyrelite
         PowerUpType type;
     };
 
-    // An in-run upgrade earned on level-up (M3 progression). Distinct from a PowerUp:
-    // power-ups drop at random from bricks and apply on contact; perks are the reward
-    // for killing enemies and arrive as a choose-one cluster (see PerkCrystal). Their
-    // effects can overlap today, but the agency differs — a perk you pick, a power-up
-    // you happen upon.
-    enum class PerkType { ExtraBomb, BiggerBlast, SwiftFeet };
+    // A build-defining ability earned on level-up (M3 progression). Distinct from a
+    // PowerUp by kind, not just agency: power-ups are the numeric economy (more bombs,
+    // range, speed) found on bricks and applied on contact; perks are the reward for
+    // killing enemies, arrive as a choose-one cluster (see PerkCrystal), and change how
+    // the player fights rather than handing out bigger numbers.
+    enum class PerkType { PierceBlast, BiggerBlast, SwiftFeet };
 
     // One crystal of the cluster dropped on level-up. The player walks onto one to
     // claim its perk; the rest of the cluster then vanishes — a choose-1-of-N made by
@@ -136,6 +136,12 @@ namespace pyrelite
         // a deterministic drop.
         int powerUpDropPercent() const { return m_powerUpDropPercent; }
         void setPowerUpDropPercent(int percent);
+
+        // Active perk abilities, granted by claiming perk crystals (see PerkType) and
+        // exposed for the HUD and tests. PierceBlast lets a blast tear through bricks to
+        // its full range instead of stopping at the first one.
+        bool pierceBlast() const { return m_pierceBlast; }
+        void setPierceBlast(bool on) { m_pierceBlast = on; }
 
         bool hasBombAt(int x, int y) const;
         bool hasExplosionAt(int x, int y) const;
@@ -256,6 +262,7 @@ namespace pyrelite
         std::optional<Direction> m_heldDir;
         bool m_pendingBomb = false;
         int m_powerUpDropPercent = 30; // default brick power-up drop chance, in percent
+        bool m_pierceBlast = false;    // perk: blast tears through bricks to full range
 
         // Streamed-world enemy lifecycle. Only the streamed game owns zone rosters; the
         // bounded constructors leave m_streamed false so all of this stays inert.
