@@ -510,6 +510,96 @@ Window {
                     color: "#ffd24a"
                 }
             }
+
+            // Power-up stats: the numeric economy earned from bricks. Descriptors are
+            // constant (built once); each value binds straight to the model so the chip
+            // updates in place rather than being rebuilt every tick.
+            Row {
+                spacing: 6
+                Repeater {
+                    model: [
+                        { t: "Bombs", c: "#2fb8ac" },
+                        { t: "Range", c: "#4f8cff" },
+                        { t: "Speed", c: "#d85ce6" }
+                    ]
+                    Rectangle {
+                        required property int index
+                        required property var modelData
+                        readonly property int value: index === 0 ? board.bombLimit
+                                                   : index === 1 ? board.bombRange
+                                                   : board.playerSpeed
+                        width: statRow.implicitWidth + 14
+                        height: 20
+                        radius: 10
+                        color: Qt.rgba(0, 0, 0, 0.55)
+                        border.color: modelData.c
+                        border.width: 1
+
+                        Row {
+                            id: statRow
+                            anchors.centerIn: parent
+                            spacing: 5
+                            Rectangle {
+                                width: 7; height: 7; radius: 4
+                                color: modelData.c
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                            Text {
+                                text: modelData.t + " " + parent.parent.value
+                                color: "#e8eef7"
+                                font.pixelSize: 12
+                                font.bold: true
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Active perk abilities. Each chip shows only while its ability is held, so
+            // an empty row means "no perks yet".
+            Row {
+                spacing: 6
+                Repeater {
+                    model: [
+                        { k: "pierce", c: "#ff6a3d" },
+                        { k: "shield", c: "#4fc3ff" },
+                        { k: "remote", c: "#b388ff" }
+                    ]
+                    Rectangle {
+                        required property var modelData
+                        readonly property bool active: modelData.k === "pierce" ? board.pierceBlast
+                                                      : modelData.k === "shield" ? board.shieldCharges > 0
+                                                      : board.remoteDetonator
+                        readonly property string label: modelData.k === "pierce" ? "Pierce Blast"
+                                                       : modelData.k === "shield" ? "Shield ×" + board.shieldCharges
+                                                       : "Remote [F]"
+                        visible: active
+                        width: perkRow.implicitWidth + 14
+                        height: 20
+                        radius: 10
+                        color: Qt.rgba(0, 0, 0, 0.6)
+                        border.color: modelData.c
+                        border.width: 1
+
+                        Row {
+                            id: perkRow
+                            anchors.centerIn: parent
+                            spacing: 5
+                            Rectangle {
+                                width: 7; height: 7; radius: 4
+                                color: modelData.c
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                            Text {
+                                text: parent.parent.label
+                                color: "#f0f0f5"
+                                font.pixelSize: 12
+                                font.bold: true
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         Rectangle {
