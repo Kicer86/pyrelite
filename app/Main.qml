@@ -131,8 +131,12 @@ Window {
     }
 
     onActiveChanged: {
-        if (!active)
+        if (!active) {
             clearPreviewKeys()
+            // A key released while the window is unfocused never delivers its keyup,
+            // which would otherwise leave the player walking; drop all held directions.
+            board.clearDirections()
+        }
     }
 
     // Drives either free preview flight or the gameplay simulation once per rendered

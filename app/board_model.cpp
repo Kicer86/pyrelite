@@ -371,15 +371,25 @@ void BoardModel::emitChanged()
 
 void BoardModel::setDirection(Direction dir)
 {
-    m_activeDir = dir;
+    // Newest press wins, but keep earlier still-held keys so releasing this one falls
+    // back to them: re-add at the back rather than tracking a single active direction.
+    std::erase(m_heldDirs, dir);
+    m_heldDirs.push_back(dir);
     m_game.setMoveDirection(toCore(dir));
 }
 
 void BoardModel::clearDirection(Direction dir)
 {
-    if (m_activeDir != dir)
-        return; // a different key is held; keep moving
-    m_activeDir = -1;
+    std::erase(m_heldDirs, dir);
+    if (m_heldDirs.empty())
+        m_game.setMoveDirection(std::nullopt);
+    else
+        m_game.setMoveDirection(toCore(m_heldDirs.back()));
+}
+
+void BoardModel::clearDirections()
+{
+    m_heldDirs.clear();
     m_game.setMoveDirection(std::nullopt);
 }
 
@@ -413,6 +423,6 @@ void BoardModel::restart()
 {
     m_game = pyrelite::Game(kSeed, pyrelite::Game::Streamed{});
     m_step = pyrelite::FixedTimestep(kStepMs, kMaxFrameMs);
-    m_activeDir = -1;
+    m_heldDirs.clear();
     emitChanged();
 }
