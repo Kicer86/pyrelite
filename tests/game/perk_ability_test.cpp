@@ -40,6 +40,24 @@ namespace
         game.setPowerUpDropPercent(0); // no stray drops to reason about
         return game;
     }
+
+    // A small open room; the player spawns at (1,1) and bombs its own tile to stand in
+    // the resulting flame — the simplest deterministic lethal hazard for Shield tests.
+    Game makeOpenRoom()
+    {
+        Grid g(5, 5);
+        for (int i = 0; i < 5; ++i)
+        {
+            g.set(i, 0, Tile::Wall);
+            g.set(i, 4, Tile::Wall);
+            g.set(0, i, Tile::Wall);
+            g.set(4, i, Tile::Wall);
+        }
+        for (int y = 1; y <= 3; ++y)
+            for (int x = 1; x <= 3; ++x)
+                g.set(x, y, Tile::Empty);
+        return Game(g);
+    }
 }
 
 TEST(PerkAbilityTest, BlastStopsAtTheFirstBrickByDefault)
@@ -93,4 +111,49 @@ TEST(PerkAbilityTest, PierceBlastStillStopsAtSolidWalls)
     EXPECT_TRUE(game.hasExplosionAt(2, 1));
     EXPECT_FALSE(game.hasExplosionAt(3, 1)); // the wall itself is never set alight
     EXPECT_FALSE(game.hasExplosionAt(4, 1)); // nor anything beyond it
+}
+
+TEST(PerkAbilityTest, ShieldSoaksAnOtherwiseLethalHit)
+{
+    Game game = makeOpenRoom();
+    game.setShieldCharges(1);
+
+    ASSERT_TRUE(game.placeBomb()); // on the player's own tile
+    game.update(2000);             // detonate; the player stands in the flame
+
+    EXPECT_EQ(game.state(), GameState::Playing); // the charge soaked the hit
+    EXPECT_EQ(game.shieldCharges(), 0);          // and was spent
+    EXPECT_TRUE(game.invulnerable());            // a mercy window opened
+}
+
+TEST(PerkAbilityTest, OneHazardSpendsExactlyOneCharge)
+{
+    Game game = makeOpenRoom();
+    game.setShieldCharges(2);
+
+    ASSERT_TRUE(game.placeBomb());
+    game.update(2000); // detonate; save spends one charge
+    ASSERT_EQ(game.shieldCharges(), 1);
+
+    // Linger on the same flame until it dies: the mercy window keeps the second charge.
+    game.update(450);
+    EXPECT_EQ(game.state(), GameState::Playing);
+    EXPECT_EQ(game.shieldCharges(), 1);
+}
+
+TEST(PerkAbilityTest, AHitWithoutAChargeIsLethal)
+{
+    Game game = makeOpenRoom();
+    game.setShieldCharges(1);
+
+    ASSERT_TRUE(game.placeBomb());
+    game.update(2000);          // first blast: the single charge saves the player
+    ASSERT_EQ(game.state(), GameState::Playing);
+
+    game.update(600);           // let the flame die and the mercy window close
+    ASSERT_FALSE(game.invulnerable());
+
+    ASSERT_TRUE(game.placeBomb());
+    game.update(2000);          // second blast: no charge left
+    EXPECT_EQ(game.state(), GameState::Lost);
 }

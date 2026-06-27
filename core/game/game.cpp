@@ -23,6 +23,9 @@ namespace pyrelite
     {
         constexpr int kBombFuseMs = 2000;
         constexpr int kExplosionMs = 400;
+        // Mercy window after a Shield soaks a hit. Outlasts a flame (kExplosionMs) so
+        // the same blast that triggered the save cannot immediately spend a second charge.
+        constexpr int kShieldInvulnMs = 500;
 
         // Movement is expressed in sub-units per millisecond, so a frame moves
         // movementUnits = speed * deltaMs (integer, deterministic). At kSubcell =
@@ -73,7 +76,7 @@ namespace pyrelite
         // into a real random subset with no other change.
         constexpr PerkType kPerkCatalog[] = {
             PerkType::PierceBlast,
-            PerkType::BiggerBlast,
+            PerkType::Shield,
             PerkType::SwiftFeet,
         };
 
@@ -497,8 +500,17 @@ namespace pyrelite
 
         const int px = playerX();
         const int py = playerY();
-        if (hasExplosionAt(px, py) || hasEnemyAt(px, py))
+        if (m_invulnMs <= 0 && (hasExplosionAt(px, py) || hasEnemyAt(px, py)))
         {
+            // Shield (Second Wind) soaks the hit and opens a brief mercy window, so the
+            // same hazard cannot immediately spend another charge; only without a charge
+            // does the run end.
+            if (m_shieldCharges > 0)
+            {
+                --m_shieldCharges;
+                m_invulnMs = kShieldInvulnMs;
+                return true;
+            }
             m_state = GameState::Lost;
             return true;
         }
@@ -611,6 +623,11 @@ namespace pyrelite
     void Game::setPowerUpDropPercent(int percent)
     {
         m_powerUpDropPercent = std::min(100, std::max(0, percent));
+    }
+
+    void Game::setShieldCharges(int charges)
+    {
+        m_shieldCharges = std::max(0, charges);
     }
 
     int Game::xpToNextLevel() const
@@ -732,8 +749,8 @@ namespace pyrelite
         case PerkType::PierceBlast:
             setPierceBlast(true);
             break;
-        case PerkType::BiggerBlast:
-            setBombRange(m_bombRange + 1);
+        case PerkType::Shield:
+            setShieldCharges(m_shieldCharges + 1);
             break;
         case PerkType::SwiftFeet:
             ++m_playerSpeed;
@@ -752,6 +769,10 @@ namespace pyrelite
         // arena). Done before movement so this tick's reads hit loaded chunks.
         m_terrain->stream(playerX(), playerY());
         refreshActiveZones();
+
+        // Burn down any Shield mercy window before this tick's hazards are judged.
+        if (m_invulnMs > 0)
+            m_invulnMs = std::max(0, m_invulnMs - deltaMs);
 
         bool changed = drainBomb();
         if (integrateMovement(deltaMs))

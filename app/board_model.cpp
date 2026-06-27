@@ -100,8 +100,8 @@ namespace
         {
         case pyrelite::PerkType::PierceBlast:
             return {QStringLiteral("Pierce Blast"), QStringLiteral("#ff6a3d")};
-        case pyrelite::PerkType::BiggerBlast:
-            return {QStringLiteral("Bigger Blast"), QStringLiteral("#ff8c42")};
+        case pyrelite::PerkType::Shield:
+            return {QStringLiteral("Shield"), QStringLiteral("#4fc3ff")};
         case pyrelite::PerkType::SwiftFeet:
             break;
         }

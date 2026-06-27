@@ -147,7 +147,6 @@ TEST(ProgressionTest, ClaimingACrystalAppliesItAndClearsTheCluster)
     const PerkCrystal *target = crystalAt(game, 1, 1);
     ASSERT_NE(target, nullptr);
     const PerkType picked = target->type;
-    const int bombRange = game.bombRange();
     const int speed = game.playerSpeed();
 
     ASSERT_TRUE(game.tryMove(Direction::Up)); // onto (1,1): claim it
@@ -158,8 +157,8 @@ TEST(ProgressionTest, ClaimingACrystalAppliesItAndClearsTheCluster)
     case PerkType::PierceBlast:
         EXPECT_TRUE(game.pierceBlast());
         break;
-    case PerkType::BiggerBlast:
-        EXPECT_EQ(game.bombRange(), bombRange + 1);
+    case PerkType::Shield:
+        EXPECT_EQ(game.shieldCharges(), 1);
         break;
     case PerkType::SwiftFeet:
         EXPECT_EQ(game.playerSpeed(), speed + 1);

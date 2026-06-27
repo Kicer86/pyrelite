@@ -46,7 +46,7 @@ namespace pyrelite
     // range, speed) found on bricks and applied on contact; perks are the reward for
     // killing enemies, arrive as a choose-one cluster (see PerkCrystal), and change how
     // the player fights rather than handing out bigger numbers.
-    enum class PerkType { PierceBlast, BiggerBlast, SwiftFeet };
+    enum class PerkType { PierceBlast, Shield, SwiftFeet };
 
     // One crystal of the cluster dropped on level-up. The player walks onto one to
     // claim its perk; the rest of the cluster then vanishes — a choose-1-of-N made by
@@ -142,6 +142,13 @@ namespace pyrelite
         // its full range instead of stopping at the first one.
         bool pierceBlast() const { return m_pierceBlast; }
         void setPierceBlast(bool on) { m_pierceBlast = on; }
+
+        // Shield (Second Wind): each charge soaks one otherwise-lethal hit (flame or
+        // enemy contact) and grants a brief mercy invulnerability, so one hazard spends
+        // exactly one charge. invulnerable() exposes that window for the HUD/feel.
+        int shieldCharges() const { return m_shieldCharges; }
+        void setShieldCharges(int charges);
+        bool invulnerable() const { return m_invulnMs > 0; }
 
         bool hasBombAt(int x, int y) const;
         bool hasExplosionAt(int x, int y) const;
@@ -263,6 +270,8 @@ namespace pyrelite
         bool m_pendingBomb = false;
         int m_powerUpDropPercent = 30; // default brick power-up drop chance, in percent
         bool m_pierceBlast = false;    // perk: blast tears through bricks to full range
+        int m_shieldCharges = 0;       // perk: lethal hits the Shield can still soak
+        int m_invulnMs = 0;            // remaining mercy invulnerability after a save
 
         // Streamed-world enemy lifecycle. Only the streamed game owns zone rosters; the
         // bounded constructors leave m_streamed false so all of this stays inert.
