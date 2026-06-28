@@ -1,5 +1,5 @@
 
-find_package(Qt6 REQUIRED COMPONENTS Quick Multimedia)
+find_package(Qt6 REQUIRED COMPONENTS Quick)
 
 qt_standard_project_setup(REQUIRES 6.5)
 
@@ -22,10 +22,16 @@ qt_add_executable(pyrelite
     board_model.cpp
     sound_player.h
     sound_player.cpp
+    third_party/miniaudio_impl.cpp
 )
 
 add_dependencies(pyrelite pyrelite_version)
-target_include_directories(pyrelite PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+# third_party/miniaudio is a git submodule pinned at tag 0.11.22; its single
+# header is on the include path so both sound_player.cpp and the implementation
+# translation unit can pull it in as <miniaudio.h>.
+target_include_directories(pyrelite PRIVATE
+    ${CMAKE_CURRENT_BINARY_DIR}
+    third_party/miniaudio)
 
 qt_add_qml_module(pyrelite
     URI PyreliteApp
@@ -51,4 +57,22 @@ qt_add_qml_module(pyrelite
         sounds/step.sfx
 )
 
-target_link_libraries(pyrelite PRIVATE core Qt6::Quick Qt6::Multimedia)
+target_link_libraries(pyrelite PRIVATE core Qt6::Quick)
+
+# miniaudio drives audio output on every target. On the desktop it dlopen()s the
+# native backend (ALSA/PulseAudio, CoreAudio, WASAPI) so no audio -dev packages
+# are needed; under Emscripten it routes through Web Audio with no extra link
+# inputs. We only have to supply the system primitives each backend leans on.
+if(NOT EMSCRIPTEN)
+    find_package(Threads REQUIRED)
+    target_link_libraries(pyrelite PRIVATE Threads::Threads ${CMAKE_DL_LIBS})
+endif()
+
+if(APPLE)
+    target_link_libraries(pyrelite PRIVATE
+        "-framework CoreFoundation"
+        "-framework CoreAudio"
+        "-framework AudioToolbox")
+elseif(UNIX AND NOT EMSCRIPTEN)
+    target_link_libraries(pyrelite PRIVATE m)
+endif()

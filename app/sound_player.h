@@ -8,8 +8,6 @@
 
 #include <memory>
 
-class QAudioSink;
-
 class SoundPlayer : public QObject
 {
     Q_OBJECT
@@ -24,12 +22,13 @@ public:
     Q_INVOKABLE void play(const QUrl &source);
 
 private:
-    class MixerDevice;
+    class Mixer;
+    struct Backend;
 
     void ensureStarted();
     QByteArray soundData(const QUrl &source);
 
     QHash<QString, QByteArray> m_cache;
-    std::unique_ptr<MixerDevice> m_device;
-    std::unique_ptr<QAudioSink> m_sink;
+    std::unique_ptr<Mixer> m_mixer;
+    std::unique_ptr<Backend> m_backend;
 };

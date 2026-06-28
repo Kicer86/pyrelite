@@ -7,14 +7,8 @@
 #include <optional>
 #include <vector>
 
-#include <QAudio>
-#include <QAudioDevice>
-#include <QAudioFormat>
-#include <QAudioSink>
-#include <QIODevice>
 #include <QFile>
-#include <QMediaDevices>
-#include <QMetaObject>
+#include <QIODevice>
 #include <QMutex>
 #include <QMutexLocker>
 #include <QRegularExpression>
@@ -22,11 +16,11 @@
 #include <QVector>
 #include <QDebug>
 
+#include <miniaudio.h>
+
 namespace
 {
     constexpr int kSampleRate = 48000;
-    constexpr int kOutputBufferMs = 50;
-    constexpr int kAdvertisedSilenceMs = 500;
     constexpr double kPi = 3.14159265358979323846;
 
     enum class Wave { Sine, Square, Triangle, Saw, Noise };
@@ -245,14 +239,13 @@ namespace
     }
 }
 
-class SoundPlayer::MixerDevice : public QIODevice
+// Lock-protected accumulation buffer for the active sound effects. play()
+// enqueues freshly rendered PCM from the main thread; read() is pulled by the
+// miniaudio device on its own audio thread, draining mono int16 samples and
+// zero-filling whatever silence the callback still asks for.
+class SoundPlayer::Mixer
 {
 public:
-    explicit MixerDevice(QObject *parent = nullptr)
-        : QIODevice(parent)
-    {
-    }
-
     void enqueue(const QByteArray &data)
     {
         QMutexLocker lock(&m_mutex);
@@ -266,15 +259,8 @@ public:
             m_samples[m_readOffset + i] += input[i];
     }
 
-    qint64 readData(char *data, qint64 maxSize) override
+    void read(qint16 *output, int sampleCount)
     {
-        if (maxSize < static_cast<qint64>(sizeof(qint16)))
-            return 0;
-
-        const qint64 byteCount = maxSize - maxSize % static_cast<qint64>(sizeof(qint16));
-        auto *output = reinterpret_cast<qint16 *>(data);
-        const int sampleCount = static_cast<int>(byteCount / static_cast<qint64>(sizeof(qint16)));
-
         QMutexLocker lock(&m_mutex);
         for (int i = 0; i < sampleCount; ++i)
         {
@@ -295,29 +281,33 @@ public:
             m_samples.erase(m_samples.begin(), m_samples.begin() + m_readOffset);
             m_readOffset = 0;
         }
-
-        return byteCount;
     }
 
-    qint64 writeData(const char *, qint64) override
+    // ma_device_data_proc: pulled on miniaudio's audio thread.
+    static void dataCallback(ma_device *device, void *output, const void *, ma_uint32 frameCount)
     {
-        return -1;
-    }
-
-    qint64 bytesAvailable() const override
-    {
-        QMutexLocker lock(&m_mutex);
-        const qint64 queued = (m_samples.size() - m_readOffset)
-            * static_cast<qint64>(sizeof(qint16));
-        const qint64 silence = kSampleRate * static_cast<qint64>(sizeof(qint16))
-            * kAdvertisedSilenceMs / 1000;
-        return queued + silence + QIODevice::bytesAvailable();
+        auto *mixer = static_cast<Mixer *>(device->pUserData);
+        mixer->read(static_cast<qint16 *>(output), static_cast<int>(frameCount));
     }
 
 private:
-    mutable QMutex m_mutex;
+    QMutex m_mutex;
     QVector<int> m_samples;
     int m_readOffset = 0;
+};
+
+// Owns the miniaudio playback device. Kept out of the header so the ~4 MB
+// miniaudio amalgamation only has to be parsed by this translation unit.
+struct SoundPlayer::Backend
+{
+    ma_device device{};
+    bool started = false;
+
+    ~Backend()
+    {
+        if (started)
+            ma_device_uninit(&device);
+    }
 };
 
 SoundPlayer::SoundPlayer(QObject *parent)
@@ -344,52 +334,41 @@ void SoundPlayer::play(const QUrl &source)
         return;
 
     ensureStarted();
-    if (m_device)
-        m_device->enqueue(data);
+    if (m_mixer)
+        m_mixer->enqueue(data);
 }
 
 void SoundPlayer::ensureStarted()
 {
-    if (m_sink)
+    if (m_backend)
         return;
 
-    QAudioFormat format;
-    format.setSampleRate(kSampleRate);
-    format.setChannelCount(1);
-    format.setSampleFormat(QAudioFormat::Int16);
+    auto mixer = std::make_unique<Mixer>();
+    auto backend = std::make_unique<Backend>();
 
-    const QAudioDevice output = QMediaDevices::defaultAudioOutput();
-    if (!output.isNull() && !output.isFormatSupported(format))
+    ma_device_config config = ma_device_config_init(ma_device_type_playback);
+    config.playback.format = ma_format_s16;
+    config.playback.channels = 1;
+    config.sampleRate = kSampleRate;
+    config.dataCallback = &Mixer::dataCallback;
+    config.pUserData = mixer.get();
+
+    if (ma_device_init(nullptr, &config, &backend->device) != MA_SUCCESS)
     {
-        qWarning() << "Audio output does not support the sfx format";
+        qWarning() << "Could not initialise the audio output device";
         return;
     }
 
-    m_device = std::make_unique<MixerDevice>();
-    m_device->open(QIODevice::ReadOnly);
-    if (output.isNull())
-        m_sink = std::make_unique<QAudioSink>(format, this);
-    else
-        m_sink = std::make_unique<QAudioSink>(output, format, this);
-    m_sink->setBufferSize(kSampleRate * static_cast<int>(sizeof(qint16))
-                          * kOutputBufferMs / 1000);
+    if (ma_device_start(&backend->device) != MA_SUCCESS)
+    {
+        qWarning() << "Could not start the audio output device";
+        ma_device_uninit(&backend->device);
+        return;
+    }
+    backend->started = true;
 
-    connect(m_sink.get(), &QAudioSink::stateChanged, this,
-        [this](QAudio::State state)
-        {
-            if (state == QAudio::StoppedState && m_sink && m_sink->error() != QAudio::NoError)
-            {
-                qWarning() << "Audio output stopped" << m_sink->error();
-                QMetaObject::invokeMethod(this,
-                    [this]()
-                    {
-                        m_sink.reset();
-                        m_device.reset();
-                    },
-                    Qt::QueuedConnection);
-            }
-        });
-    m_sink->start(m_device.get());
+    m_mixer = std::move(mixer);
+    m_backend = std::move(backend);
 }
 
 QByteArray SoundPlayer::soundData(const QUrl &source)
