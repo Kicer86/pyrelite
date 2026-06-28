@@ -1,0 +1,3 @@
+[submodule "app/third_party/miniaudio"]
+	path = app/third_party/miniaudio
+	url = https://github.com/mackron/miniaudio.git
