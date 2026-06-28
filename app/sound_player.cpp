@@ -18,6 +18,10 @@
 
 #include <miniaudio.h>
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten/emscripten.h>
+#endif
+
 namespace
 {
     constexpr int kSampleRate = 48000;
@@ -366,6 +370,24 @@ void SoundPlayer::ensureStarted()
         return;
     }
     backend->started = true;
+
+#ifdef __EMSCRIPTEN__
+    // Browsers create the WebAudio context suspended until a user gesture.
+    // miniaudio only auto-resumes on 'click'/'touchend', but Pyrelite is played
+    // entirely on the keyboard, so a player can start moving without ever
+    // clicking and hear nothing. Resume on the first key press too, reusing
+    // miniaudio's own unlock routine.
+    EM_ASM({
+        if (window.miniaudio && !window.miniaudio.pyreliteKeyUnlock) {
+            window.miniaudio.pyreliteKeyUnlock = true;
+            document.addEventListener('keydown', function() {
+                if (window.miniaudio) {
+                    window.miniaudio.unlock();
+                }
+            }, true);
+        }
+    });
+#endif
 
     m_mixer = std::move(mixer);
     m_backend = std::move(backend);
