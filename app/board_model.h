@@ -32,6 +32,8 @@ class BoardModel : public QObject
     Q_PROPERTY(int level READ level NOTIFY changed)
     Q_PROPERTY(int xp READ xp NOTIFY changed)
     Q_PROPERTY(int xpToNextLevel READ xpToNextLevel NOTIFY changed)
+    Q_PROPERTY(int score READ score NOTIFY changed)
+    Q_PROPERTY(int maxDepth READ maxDepth NOTIFY changed)
     Q_PROPERTY(int perkCrystalCount READ perkCrystalCount NOTIFY changed)
     // Upgrade state for the HUD: the numeric power-up economy and the active perk
     // abilities. All refresh on the same changed() signal as the rest of the model.
@@ -68,6 +70,9 @@ public:
     int level() const;
     int xp() const;
     int xpToNextLevel() const;
+    // Run score and furthest depth reached, read straight from the core for the HUD.
+    int score() const { return m_game.score(); }
+    int maxDepth() const { return m_game.maxDepth(); }
     int perkCrystalCount() const;
     // Upgrade state, read straight from the core for the HUD.
     int bombLimit() const { return m_game.bombLimit(); }

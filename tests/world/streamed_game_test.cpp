@@ -291,6 +291,20 @@ TEST(StreamedGameTest, KilledZoneEnemiesDoNotRespawnOnRevisit)
     EXPECT_TRUE(exercised) << "no trappable start enemy round-tripped across the scanned seeds";
 }
 
+TEST(StreamedGameTest, ReachingADeeperTierAddsASuperLinearScoreBonus)
+{
+    // A fresh run scores nothing. Walking far east climbs into a higher-tier zone, so
+    // both the reach term and the tier^2 bonus kick in: the score must then exceed the
+    // pure linear-by-depth floor (maxDepth), proving the super-linear term contributes.
+    Game game(1, Game::Streamed{});
+    EXPECT_EQ(game.score(), 0);
+    EXPECT_EQ(game.maxDepth(), 0);
+
+    ASSERT_TRUE(walkEastTo(game, 8)); // into a tier >= 1 zone, well away from the origin
+    EXPECT_GT(game.maxDepth(), 0);
+    EXPECT_GT(game.score(), game.maxDepth());
+}
+
 TEST(StreamedGameTest, EndlessObjectiveDoesNotWinWhenTheEnemyRosterIsCleared)
 {
     Grid grid(7, 5);

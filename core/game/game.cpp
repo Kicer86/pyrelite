@@ -14,7 +14,9 @@
 #include "terrain/bounded_terrain.h"
 #include "grid/movement.h"
 #include "game/zone_spawns.h"
+#include "world/chunk.h"
 #include "world/world.h"
+#include "world/world_gen.h"
 #include "world/zone.h"
 
 namespace pyrelite
@@ -69,6 +71,14 @@ namespace pyrelite
         constexpr int kXpBase = 10;
         constexpr int kXpStep = 5;
         constexpr int kPerkChoiceCount = 3;
+
+        // Run-score knobs (M4 meta-economy source). A kill is worth kKillBase scaled by
+        // the tier of the zone it fell in (1 + tier). Reaching depth d pays kDepthLinear
+        // per furthest tile, plus a super-linear kDepthTierBonus * maxTier^2 that makes
+        // pushing into a deeper tier worth the dangerous return trip. First-cut balance.
+        constexpr int kKillBase = 10;
+        constexpr int kDepthLinear = 1;
+        constexpr int kDepthTierBonus = 100;
 
         // Every perk a level-up can drop, in one place (like kPowerUpTypes). A cluster
         // is a distinct subset of size kPerkChoiceCount; today the catalog holds exactly
@@ -367,6 +377,7 @@ namespace pyrelite
         refreshActiveZones();
         collectPowerUpAtPlayer();
         collectPerkCrystalAtPlayer();
+        recordDepth();
         return true;
     }
 
@@ -507,6 +518,11 @@ namespace pyrelite
         {
             if (!hasExplosionAt(m_enemies[i]->tileX(), m_enemies[i]->tileY()))
                 continue;
+            // A kill pays more the deeper the zone it fell in (1 + tier), feeding the run
+            // score that becomes meta-currency.
+            const int tier = worldTier(chunkOf(m_enemies[i]->tileX()),
+                                       chunkOf(m_enemies[i]->tileY()));
+            m_killPoints += kKillBase * (1 + tier);
             const EnemyOrigin &origin = m_enemyOrigins[i];
             if (origin.persistent)
                 m_deadEnemies.emplace(origin.spawnX, origin.spawnY);
@@ -664,6 +680,23 @@ namespace pyrelite
         m_xp += amount;
     }
 
+    void Game::recordDepth()
+    {
+        // Origin spawn is (1, 1); Chebyshev distance counts a diagonal reach by its
+        // furthest axis. Both records only ever rise across the run.
+        const int depth = std::max(std::abs(playerX() - 1), std::abs(playerY() - 1));
+        m_maxDepth = std::max(m_maxDepth, depth);
+        m_maxTier = std::max(m_maxTier,
+            worldTier(chunkOf(playerX()), chunkOf(playerY())));
+    }
+
+    int Game::score() const
+    {
+        return m_killPoints
+            + m_maxDepth * kDepthLinear
+            + m_maxTier * m_maxTier * kDepthTierBonus;
+    }
+
     // After the simulation settles, spend one banked level: if enough XP is in hand,
     // the run is live, and no cluster is still waiting to be claimed, level up and drop
     // a fresh perk cluster. Only one cluster is out at a time, so a multi-kill tick that
@@ -803,6 +836,7 @@ namespace pyrelite
             changed = true;
         if (integrateMovement(deltaMs))
             changed = true;
+        recordDepth();
 
         for (auto &enemy : m_enemies)
         {
