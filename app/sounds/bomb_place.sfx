@@ -1,0 +1,7 @@
+# Heavy click when the bomb lands.
+duration 0.13
+volume 0.48
+envelope 0.002 0.070
+tone 0.000 0.110 sine 165 92 0.85
+tone 0.000 0.045 square 78 72 0.22
+noise 0.000 0.025 0.20

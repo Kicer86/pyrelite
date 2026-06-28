@@ -25,6 +25,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.action != 'closed' && github.event.pull_request.head.sha || '' }}
+          submodules: recursive
 
       - name: Build web
         if: github.event.action != 'closed'
