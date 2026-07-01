@@ -498,6 +498,15 @@ Window {
                 font.bold: true
             }
 
+            // Run score and how far the player has pushed from spawn — the M4 economy
+            // source, banked as currency on extraction.
+            Text {
+                text: "Score " + board.score + "   Depth " + board.maxDepth
+                color: "#cfe0ff"
+                font.pixelSize: 13
+                font.bold: true
+            }
+
             Rectangle {
                 width: 130
                 height: 9

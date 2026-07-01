@@ -108,6 +108,18 @@ namespace pyrelite
         int level() const { return m_level; }
         int xpToNextLevel() const;
 
+        // Run score (M4 meta-economy source): deterministic, integer, surfaced for the
+        // HUD and converted to currency at run end. Two sources, both rising with depth:
+        //   - kills: each enemy is worth more the deeper the zone it fell in (1 + tier),
+        //     so an origin kill pays the base and a far one pays a multiple of it;
+        //   - reach: maxDepth() is the furthest Chebyshev tile-distance from the origin
+        //     spawn (1, 1) reached this run (max reached, not total travelled, so pacing
+        //     back and forth cannot farm it). It scores linearly, plus a super-linear
+        //     bonus in the deepest tier touched — the "go deep" reward that has to pay
+        //     for the dangerous trip back.
+        int score() const;
+        int maxDepth() const { return m_maxDepth; }
+
         // The perk cluster currently lying on the floor (empty when none is pending).
         // Walking onto any one of them claims its perk and clears the rest.
         const std::vector<PerkCrystal> &perkCrystals() const { return m_perkCrystals; }
@@ -250,6 +262,10 @@ namespace pyrelite
         void collectPowerUpAtPlayer();
         void applyPowerUp(PowerUpType type);
         void awardXp(int amount);
+        // Fold the player's current tile into the run's depth records. m_maxDepth and
+        // m_maxTier are run maxima, so walking back toward the origin to extract never
+        // lowers the score already earned.
+        void recordDepth();
         bool checkLevelUp();
         void dropPerkCluster(int originX, int originY);
         void collectPerkCrystalAtPlayer();
@@ -270,6 +286,9 @@ namespace pyrelite
         int m_playerSpeed = 1;
         int m_xp = 0;
         int m_level = 1;
+        int m_killPoints = 0; // run score banked from kills; deep kills are worth more
+        int m_maxDepth = 0;   // furthest Chebyshev tile-distance from the origin reached
+        int m_maxTier = 0;    // highest world tier reached; drives the super-linear bonus
         std::vector<PerkCrystal> m_perkCrystals;
         std::optional<std::pair<int, int>> m_lastKillTile;
         Rng m_powerUpRng;
