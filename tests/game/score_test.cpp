@@ -53,7 +53,9 @@ Game makeKillRoom(bool withTarget)
     g.set(5, 1, Tile::Empty); // boxed survivor pocket: every neighbour is a wall
     Game game(g);
     if (withTarget)
+    {
         EXPECT_TRUE(game.addEnemy(3, 1));
+    }
     EXPECT_TRUE(game.addEnemy(5, 1));
     return game;
 }
